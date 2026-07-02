@@ -15,6 +15,37 @@ function showScreen(name) {
 }
 
 // ------------------------------------------------------------
+// Guard: must be logged in with role 'teacher' or 'admin'.
+// Quiz writes are also enforced at the database level (RLS), so this
+// is about the page experience, not the only line of defense.
+// ------------------------------------------------------------
+async function requireTeacherOrAdmin() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    window.location.href = '/login.html';
+    return null;
+  }
+
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', session.user.id)
+    .single();
+
+  if (error || !profile || !['teacher', 'admin'].includes(profile.role)) {
+    window.location.href = '/login.html';
+    return null;
+  }
+
+  return session;
+}
+
+$('#btn-sign-out').addEventListener('click', async () => {
+  await supabase.auth.signOut();
+  window.location.href = '/index.html';
+});
+
+// ------------------------------------------------------------
 // Quiz list
 // ------------------------------------------------------------
 async function loadQuizList() {
@@ -283,4 +314,8 @@ $('#btn-delete-quiz').addEventListener('click', async () => {
 // ------------------------------------------------------------
 // Init
 // ------------------------------------------------------------
-loadQuizList();
+(async () => {
+  const session = await requireTeacherOrAdmin();
+  if (!session) return;
+  loadQuizList();
+})();
