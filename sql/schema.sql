@@ -44,9 +44,35 @@ create policy "Public read access to questions"
   on questions for select
   using (true);
 
--- NOTE: There are intentionally no insert/update/delete policies for the
--- anon role. Add quizzes/questions from the Supabase Table Editor, or
--- add an authenticated "admin" policy later once you build a quiz editor.
+-- Write access, so the in-app "Manage quizzes" editor can create/edit/
+-- delete quizzes. SECURITY NOTE: this means anyone with your site's
+-- anon key (public, embedded in the site JS) can write to these
+-- tables — fine for a personal/teacher tool, but there's no login.
+-- See sql/enable_editing.sql for more detail if you're adding this
+-- to an existing project instead of running this fresh.
+create policy "Public write access to quizzes"
+  on quizzes for insert
+  with check (true);
+
+create policy "Public update access to quizzes"
+  on quizzes for update
+  using (true);
+
+create policy "Public delete access to quizzes"
+  on quizzes for delete
+  using (true);
+
+create policy "Public write access to questions"
+  on questions for insert
+  with check (true);
+
+create policy "Public update access to questions"
+  on questions for update
+  using (true);
+
+create policy "Public delete access to questions"
+  on questions for delete
+  using (true);
 
 -- ============================================================
 -- Sample data — delete or edit this once you're adding your own quizzes

@@ -1,10 +1,14 @@
 # Quiz Arena
 
-A live, buzzer-style quiz game (Blooket/Kahoot-style). No student accounts —
-players join with a name + emoji and a game code. Built as a plain static
-site (no build step) so it deploys straight to Netlify from GitHub.
+A live, buzzer-style quiz game (Blooket/Kahoot-style). Only logged-in
+teachers/admins can host games or manage quizzes — students never need
+an account, they just join with a name + emoji and a game code. Built as
+a plain static site (no build step) so it deploys straight to Netlify
+from GitHub.
 
 - **Quizzes & questions** are stored in Supabase Postgres.
+- **Accounts & roles** (admin/teacher) run on Supabase Auth, with Row
+  Level Security enforcing who can write quiz data at the database level.
 - **The live game itself** (who's joined, current question, scores) runs
   entirely over Supabase Realtime (Presence + Broadcast) — nothing about
   a game or a player is written to the database, which is what keeps this
@@ -46,33 +50,77 @@ python3 -m http.server 8080
 Then open `/index.html`, click **Host a game** in one tab and **Join a
 game** in another (or on your phone) to test the full flow.
 
-## 3. Add your own quizzes
+## 3. Set up accounts (admin + teachers)
 
-For now, add quizzes and questions directly in the Supabase **Table
-Editor** (no admin UI yet — see "What's next" below):
+Only logged-in teachers/admins can create or edit quizzes now — this is
+enforced by the database itself (Row Level Security), not just hidden in
+the UI. Three steps to get this running:
 
-- **quizzes**: `title`, `topic`
-- **questions**: `quiz_id` (pick the quiz), `order_index` (0, 1, 2…),
-  `question_text`, `time_limit_seconds`, `correct_option_id` (must match
-  one of the `id`s in `options`), and `options` as JSON, e.g.:
+### a) Run the roles migration
 
-  ```json
-  [
-    {"id": "a", "text": "Paris"},
-    {"id": "b", "text": "Rome"},
-    {"id": "c", "text": "Berlin"},
-    {"id": "d", "text": "Madrid"}
-  ]
-  ```
+In Supabase SQL Editor, run [`sql/auth_and_roles.sql`](sql/auth_and_roles.sql).
+This creates a `profiles` table (marks each account as `admin` or
+`teacher`) and locks quiz writes down to those roles only. If you'd
+previously run `sql/enable_editing.sql` (open-to-everyone writes), this
+replaces those policies.
 
-## 4. Deploy
+### b) Deploy the create-teacher function
+
+Creating a login for someone requires Supabase's privileged service-role
+key, which can never be exposed in browser code — so account creation has
+to go through a small server-side function instead:
+
+1. Supabase Dashboard > **Edge Functions** > **Deploy a new function** >
+   **Via Editor**.
+2. Name it exactly `create-teacher`.
+3. Paste in the contents of
+   [`supabase-functions/create-teacher.ts`](supabase-functions/create-teacher.ts).
+4. Click **Deploy**. No extra configuration needed — the keys it needs
+   are automatically available inside the function.
+
+### c) Create your first admin account (one manual, one-time step)
+
+Nothing can automate this part — there's no admin yet to create one:
+
+1. Supabase Dashboard > **Authentication > Users > Add user**. Enter your
+   email + a password, and check **Auto Confirm User**.
+2. Copy that new user's UUID from the users list.
+3. Back in SQL Editor, run (with your real email + the UUID you copied):
+   ```sql
+   insert into profiles (id, email, role)
+   values ('PASTE-THE-UUID-HERE', 'your@email.com', 'admin');
+   ```
+4. Go to `/login.html` on your deployed site and log in — you'll land on
+   the **admin page**, where you can create teacher accounts for anyone
+   else who needs to build quizzes. Each teacher gets an email + a
+   temporary password you set and share with them directly (there's no
+   self-signup or "forgot password" flow yet — that'd be a good next
+   addition if you need it).
+
+## 4. Add your own quizzes
+
+Log in at `/login.html` (as a teacher or admin) to reach the quiz editor.
+Create a new quiz (title + topic), add questions with **2 to 4** answers
+each (leave an answer blank to only offer fewer options), and pick the
+correct one with the radio button next to it. Click **Add question** to
+add more, **Save quiz** when you're done. Click any quiz in the list to
+edit it — question edits fully replace the previous set for that quiz
+(simplest way to support editing without complex merging), and there's a
+**Delete this quiz** button in the editor too.
+
+*(You can still add/edit rows directly in Supabase's Table Editor too if
+you ever prefer that — same tables, same format — logged in there as
+yourself rather than through the app.)*
+
+## 5. Deploy
 
 1. Push this folder to a GitHub repo.
 2. In [Netlify](https://app.netlify.com), **Add new site > Import an
    existing project**, connect the repo. Build command: leave blank.
    Publish directory: `.` (already set in `netlify.toml`).
-3. Deploy. Share the `/host.html` link with yourself and `/join.html`
-   with students.
+3. Deploy. Share `/join.html` with students (no login needed) and
+   `/login.html` with teachers — logging in takes them to their
+   dashboard, with **Host a game** and **Manage quizzes**.
 
 ## How the live game works
 
@@ -180,9 +228,10 @@ in the lobby.
   in `join.js` the same way `answer_result` is (check "is this for me"),
   and (2) alternate scoring/rules dropped into `scoring.js`. The host would
   pick a mode alongside the quiz topic on the lobby screen.
-- A **quiz editor UI** in the host app, instead of using the Supabase
-  Table Editor directly.
 - **Persisting final results** to a `game_results` table (optional, only
   written once at game end — still cheap) so you can review past games.
 - **Reconnect support**: persist `{code, playerId, name, emoji, score}` to
   `sessionStorage` so a refreshed tab can rejoin its game in progress.
+- **Password reset / self-service** for teacher accounts — right now an
+  admin sets a temporary password directly; there's no "forgot password"
+  email flow yet.

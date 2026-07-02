@@ -101,6 +101,14 @@ input {
   gap: 24px;
 }
 
+/* .screen sets display:flex, which (being author CSS) silently overrides
+   the browser's built-in [hidden] { display:none } rule at equal
+   specificity. Without this, every step-section renders at once, stacked
+   top to bottom, instead of acting as a single full-screen "page". */
+.screen[hidden] {
+  display: none;
+}
+
 .screen--top {
   justify-content: flex-start;
   padding-top: 48px;
