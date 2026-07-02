@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Join — Quiz Arena</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+  <!-- STEP 1: join form -->
+  <section id="screen-join" class="screen">
+    <div class="logo">QUIZ <span>ARENA</span></div>
+    <div class="card">
+      <div class="field">
+        <label for="input-code">Game code</label>
+        <input id="input-code" class="join-code" maxlength="5" placeholder="ABCDE" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="input-name">Your name</label>
+        <input id="input-name" maxlength="18" placeholder="e.g. Jordan" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label>Pick a character</label>
+        <div class="emoji-grid" id="emoji-grid"></div>
+      </div>
+      <button class="btn btn--lime" id="btn-join">Join game</button>
+      <p class="error-text" id="join-error" style="margin-top:10px;"></p>
+    </div>
+  </section>
+
+  <!-- STEP 2: waiting room -->
+  <section id="screen-waiting" class="screen" hidden>
+    <span class="eyebrow">You're in!</span>
+    <div style="font-size:56px;" id="waiting-emoji"></div>
+    <h2 class="display" style="font-size:22px;" id="waiting-name"></h2>
+    <p class="center-text">Waiting for the host to start the game…</p>
+  </section>
+
+  <!-- STEP 3: live question — each player works through their own shuffled order -->
+  <section id="screen-question" class="screen" hidden>
+    <div class="timer-ring" id="timer-ring">
+      <svg viewBox="0 0 80 80">
+        <circle class="track" cx="40" cy="40" r="34"></circle>
+        <circle class="progress" id="timer-progress" cx="40" cy="40" r="34"></circle>
+      </svg>
+      <div class="count" id="timer-count">20</div>
+    </div>
+    <p class="center-text" id="progress-label"></p>
+    <div class="question-wrap">
+      <h2 class="question-text" id="player-question-text"></h2>
+      <div class="options-grid" id="player-options-grid"></div>
+    </div>
+  </section>
+
+  <!-- STEP 4: instant per-question feedback, then auto-advance -->
+  <section id="screen-reveal" class="screen" hidden>
+    <div class="reveal-banner" id="reveal-banner"></div>
+    <div class="points-earned" id="points-earned"></div>
+    <div class="card center-text" style="max-width:300px;">
+      <span class="eyebrow">Your score</span>
+      <div class="display" style="font-size:36px;color:var(--lime);" id="my-total-score">0</div>
+    </div>
+  </section>
+
+  <!-- STEP 5: this player has answered every question -->
+  <section id="screen-done" class="screen" hidden>
+    <span class="eyebrow">All done!</span>
+    <h2 class="display" style="font-size:24px;">You finished the quiz 🎉</h2>
+    <div class="card center-text" style="max-width:300px;">
+      <span class="eyebrow">Your score</span>
+      <div class="display" style="font-size:36px;color:var(--lime);" id="done-total-score">0</div>
+    </div>
+    <p class="center-text">Waiting for the host to end the game…</p>
+  </section>
+
+  <!-- STEP 6: final results, once the host ends the game -->
+  <section id="screen-final" class="screen" hidden>
+    <h1 class="display" style="font-size:28px;" id="final-headline">Game over!</h1>
+    <div class="podium" id="podium"></div>
+    <a href="/join.html" class="btn btn--ghost" style="max-width:280px;text-decoration:none;text-align:center;">
+      Join another game
+    </a>
+  </section>
+
+  <script type="module" src="/js/join.js"></script>
+</body>
+</html>

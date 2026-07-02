@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Host — Quiz Arena</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+  <!-- STEP 1: pick a quiz -->
+  <section id="screen-pick" class="screen">
+    <span class="eyebrow">Step 1 of 3</span>
+    <h1 class="display" style="font-size:28px;">Pick a quiz</h1>
+    <div class="card" id="quiz-list-card">
+      <div id="quiz-list">Loading quizzes…</div>
+    </div>
+    <a href="/index.html" class="muted-link">&larr; back</a>
+  </section>
+
+  <!-- STEP 2: lobby -->
+  <section id="screen-lobby" class="screen" hidden>
+    <span class="eyebrow">Join at your link</span>
+    <div class="join-code-display" id="join-code-display">·····</div>
+    <p class="center-text" id="lobby-quiz-title"></p>
+    <div class="player-count"><span id="player-count">0</span> players joined</div>
+    <div class="player-roster" id="player-roster"></div>
+    <button class="btn btn--lime" id="btn-start-game" style="max-width:280px;" disabled>
+      Start game
+    </button>
+  </section>
+
+  <!-- STEP 3: live game — everyone working through questions at their own pace -->
+  <section id="screen-live" class="screen screen--top" hidden>
+    <span class="eyebrow"><span id="finished-count">0</span> / <span id="total-count">0</span> finished</span>
+    <h1 class="display" style="font-size:24px;">Live standings</h1>
+    <div class="leaderboard" id="leaderboard"></div>
+    <button class="btn btn--ghost" id="btn-end-game" style="max-width:280px;">
+      End game
+    </button>
+  </section>
+
+  <!-- STEP 4: final results -->
+  <section id="screen-final" class="screen" hidden>
+    <h1 class="display" style="font-size:30px;">Final results 🎉</h1>
+    <div class="podium" id="podium"></div>
+    <div class="leaderboard" id="final-leaderboard" style="margin-top:12px;"></div>
+    <a href="/host.html" class="btn btn--ghost" style="max-width:280px;text-decoration:none;text-align:center;">
+      Host another game
+    </a>
+  </section>
+
+  <script type="module" src="/js/host.js"></script>
+</body>
+</html>
