@@ -1,29 +1,6 @@
 import { supabase } from './supabaseClient.js';
 import { escapeHtml, $ } from './utils.js';
-
-// ------------------------------------------------------------
-// Guard: must be logged in AND role === 'admin'
-// ------------------------------------------------------------
-async function requireAdmin() {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
-    window.location.href = '/login.html';
-    return null;
-  }
-
-  const { data: profile, error } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', session.user.id)
-    .single();
-
-  if (error || !profile || profile.role !== 'admin') {
-    window.location.href = '/login.html';
-    return null;
-  }
-
-  return session;
-}
+import { requireRole } from './authGuard.js';
 
 $('#btn-sign-out').addEventListener('click', async () => {
   await supabase.auth.signOut();
@@ -99,7 +76,7 @@ async function loadTeacherList() {
 // Init
 // ------------------------------------------------------------
 (async () => {
-  const session = await requireAdmin();
-  if (!session) return;
+  const auth = await requireRole(['admin']);
+  if (!auth) return;
   loadTeacherList();
 })();

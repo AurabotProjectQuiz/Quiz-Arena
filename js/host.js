@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient.js';
 import { calculateScore, rankPlayers } from './scoring.js';
 import { generateJoinCode, escapeHtml, shuffle, $ } from './utils.js';
+import { requireRole } from './authGuard.js';
 
 // ------------------------------------------------------------
 // State
@@ -19,6 +20,11 @@ function showScreen(name) {
     $(`#screen-${s}`).hidden = s !== name;
   }
 }
+
+$('#btn-sign-out').addEventListener('click', async () => {
+  await supabase.auth.signOut();
+  window.location.href = '/index.html';
+});
 
 // ------------------------------------------------------------
 // Step 1: pick a quiz
@@ -184,6 +190,10 @@ function stopDemoAnswering() {
 $('#btn-start-game').addEventListener('click', startGame);
 
 function startGame() {
+  // Send every player the full question set (no correct answers) in one
+  // message. Each player shuffles it into their own order client-side and
+  // works through it independently — this is the one broadcast that
+  // replaces the old "one question at a time" loop.
   const sanitized = questions.map((q) => ({
     id: q.id,
     text: q.question_text,
@@ -202,7 +212,9 @@ function startGame() {
 }
 
 // ------------------------------------------------------------
-// Step 3: live scoring
+// Step 3: live scoring — answers arrive asynchronously, any player,
+// any question, any time. Host validates + scores + relays the result
+// back (filtered client-side by playerId) plus the refreshed leaderboard.
 // ------------------------------------------------------------
 function handleAnswer(payload) {
   const { playerId, questionId, optionId, timeTakenMs } = payload;
@@ -298,4 +310,8 @@ function renderPodium(leaderboard, targetSelector) {
 // ------------------------------------------------------------
 // Init
 // ------------------------------------------------------------
-loadQuizzes();
+(async () => {
+  const auth = await requireRole(['teacher', 'admin']);
+  if (!auth) return;
+  loadQuizzes();
+})();

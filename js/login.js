@@ -57,7 +57,7 @@ async function redirectByRole(userId) {
   if (profile.role === 'admin') {
     window.location.href = '/admin.html';
   } else if (profile.role === 'teacher') {
-    window.location.href = '/manage.html';
+    window.location.href = '/dashboard.html';
   } else {
     $('#login-error').textContent = 'Unrecognized account role — contact your admin.';
     await supabase.auth.signOut();
