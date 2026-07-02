@@ -50,20 +50,30 @@ async function loadQuizzes() {
 }
 
 async function selectQuiz(selected) {
+  const listEl = $('#quiz-list');
+  listEl.innerHTML = '<p class="center-text">Loading questions…</p>';
+
   const { data, error } = await supabase
     .from('questions')
     .select('id, question_text, options, correct_option_id, time_limit_seconds, order_index')
     .eq('quiz_id', selected.id)
     .order('order_index', { ascending: true });
 
-  if (error || !data || data.length === 0) {
-    alert("This quiz has no questions yet — add some in Supabase first.");
+  if (error) {
+    console.error('Failed to load questions:', error);
+    listEl.innerHTML = `<p class="error-text">Couldn't load questions: ${escapeHtml(error.message)}</p>`;
+    return;
+  }
+  if (!data || data.length === 0) {
+    listEl.innerHTML = `<p class="error-text">This quiz has no questions yet — add some in Supabase first.</p>`;
     return;
   }
 
   quiz = selected;
   questions = data;
   questionsById = Object.fromEntries(data.map((q) => [q.id, q]));
+
+  listEl.innerHTML = '<p class="center-text">Connecting…</p>';
   await createGameSession();
 }
 
@@ -81,12 +91,16 @@ async function createGameSession() {
   channel.on('presence', { event: 'sync' }, syncPlayersFromPresence);
   channel.on('broadcast', { event: 'answer' }, ({ payload }) => handleAnswer(payload));
 
-  channel.subscribe(async (status) => {
+  channel.subscribe(async (status, err) => {
+    console.log('Realtime channel status:', status, err ?? '');
     if (status === 'SUBSCRIBED') {
       await channel.track({ role: 'host' });
       $('#join-code-display').textContent = code;
       $('#lobby-quiz-title').textContent = `${quiz.title} · ${quiz.topic}`;
       showScreen('lobby');
+    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+      const listEl = $('#quiz-list');
+      listEl.innerHTML = `<p class="error-text">Couldn't connect (${status}). Check the browser console for details — this usually means Realtime isn't reachable for your Supabase project yet.</p>`;
     }
   });
 }
@@ -170,10 +184,6 @@ function stopDemoAnswering() {
 $('#btn-start-game').addEventListener('click', startGame);
 
 function startGame() {
-  // Send every player the full question set (no correct answers) in one
-  // message. Each player shuffles it into their own order client-side and
-  // works through it independently — this is the one broadcast that
-  // replaces the old "one question at a time" loop.
   const sanitized = questions.map((q) => ({
     id: q.id,
     text: q.question_text,
@@ -192,9 +202,7 @@ function startGame() {
 }
 
 // ------------------------------------------------------------
-// Step 3: live scoring — answers arrive asynchronously, any player,
-// any question, any time. Host validates + scores + relays the result
-// back (filtered client-side by playerId) plus the refreshed leaderboard.
+// Step 3: live scoring
 // ------------------------------------------------------------
 function handleAnswer(payload) {
   const { playerId, questionId, optionId, timeTakenMs } = payload;
