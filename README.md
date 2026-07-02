@@ -148,6 +148,30 @@ quiz list" and "load questions for the chosen quiz" at the very start.
   if that ever matters, the host can independently timestamp when it
   *receives* each answer as a sanity check.
 
+## Previewing it yourself (no second device needed)
+
+On the lobby screen there's a **🎭 Pretend Host** button — click it to add
+6 fake players with bot names/emojis. Click **Start game** as normal and
+they'll answer questions automatically (roughly 70% correct, random
+timing) every second or so, so you can watch the live leaderboard reorder,
+finish the game, and see the podium — all from one browser tab.
+
+This is entirely self-contained and safe to delete once you're done
+testing:
+- Remove the block in `js/host.js` between the `PRETEND HOST — DEMO MODE`
+  and `END PRETEND HOST DEMO MODE` comments.
+- Remove the two one-line "demo hook" calls (`startDemoAnswering()` in
+  `startGame()`, `stopDemoAnswering()` in `endGame()`) — they're commented
+  so you can find them.
+- Remove the button block in `host.html` between the
+  `<!-- PRETEND HOST DEMO -->` and `<!-- END PRETEND HOST DEMO -->`
+  comments.
+
+Fake players never touch Supabase or the real join code — they're purely
+local to your browser tab, so this costs nothing and real students
+connecting to the same game code would just see them as regular players
+in the lobby.
+
 ## What's next (per your roadmap)
 
 - **Game modes with sabotage/power-ups.** The architecture already routes

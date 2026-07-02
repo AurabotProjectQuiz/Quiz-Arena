@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient.js';
 import { calculateScore, rankPlayers } from './scoring.js';
-import { generateJoinCode, escapeHtml, $ } from './utils.js';
+import { generateJoinCode, escapeHtml, shuffle, $ } from './utils.js';
 
 // ------------------------------------------------------------
 // State
@@ -113,6 +113,60 @@ function renderRoster() {
   $('#btn-start-game').disabled = list.length === 0;
 }
 
+// ============================================================
+// PRETEND HOST — DEMO MODE
+// Lets you preview the full host experience (lobby → start → live
+// scoring → end game) without needing real devices. Adds fake players
+// to the lobby, then auto-simulates their answers once the game starts.
+// To remove this feature later: delete this whole block, delete the two
+// one-line hook calls marked "demo hook" inside startGame() and
+// endGame() below, and delete the "PRETEND HOST DEMO" button in
+// host.html.
+// ============================================================
+const DEMO_BOT_NAMES = ['Nova 🤖', 'Blaze 🤖', 'Pixel 🤖', 'Comet 🤖', 'Juno 🤖', 'Rex 🤖', 'Lumi 🤖', 'Zephyr 🤖'];
+const DEMO_BOT_EMOJIS = ['🦊', '🐸', '🐼', '🦁', '🐯', '🐨', '🦄', '🐢'];
+let demoAnswerInterval = null;
+
+function addDemoPlayers(count = 6) {
+  const names = shuffle(DEMO_BOT_NAMES).slice(0, count);
+  names.forEach((name, i) => {
+    const id = `demo-${Date.now()}-${i}`;
+    players[id] = { id, name, emoji: DEMO_BOT_EMOJIS[i % DEMO_BOT_EMOJIS.length], score: 0, answered: 0, isDemo: true };
+  });
+  renderRoster();
+}
+
+$('#btn-pretend-host')?.addEventListener('click', () => addDemoPlayers());
+
+function startDemoAnswering() {
+  const hasDemoPlayers = Object.values(players).some((p) => p.isDemo);
+  if (!hasDemoPlayers) return;
+
+  clearInterval(demoAnswerInterval);
+  demoAnswerInterval = setInterval(() => {
+    const stillGoing = Object.values(players).filter((p) => p.isDemo && p.answered < questions.length);
+    if (stillGoing.length === 0) {
+      clearInterval(demoAnswerInterval);
+      return;
+    }
+    const bot = stillGoing[Math.floor(Math.random() * stillGoing.length)];
+    const q = questions[bot.answered]; // bots just answer in original quiz order
+    const willBeCorrect = Math.random() < 0.7; // 70% correct, to look realistic
+    const wrongOption = q.options.find((o) => o.id !== q.correct_option_id);
+    const optionId = willBeCorrect ? q.correct_option_id : (wrongOption ? wrongOption.id : null);
+    const timeTakenMs = Math.random() * q.time_limit_seconds * 1000;
+    handleAnswer({ playerId: bot.id, questionId: q.id, optionId, timeTakenMs });
+  }, 900 + Math.random() * 1200);
+}
+
+function stopDemoAnswering() {
+  clearInterval(demoAnswerInterval);
+  demoAnswerInterval = null;
+}
+// ============================================================
+// END PRETEND HOST DEMO MODE
+// ============================================================
+
 $('#btn-start-game').addEventListener('click', startGame);
 
 function startGame() {
@@ -133,6 +187,8 @@ function startGame() {
   $('#finished-count').textContent = '0';
   renderLeaderboard(rankPlayers(Object.values(players)), '#leaderboard');
   showScreen('live');
+
+  startDemoAnswering(); // demo hook — delete this line to remove pretend-host mode
 }
 
 // ------------------------------------------------------------
@@ -184,6 +240,7 @@ $('#btn-end-game').addEventListener('click', endGame);
 // Step 4: final results
 // ------------------------------------------------------------
 function endGame() {
+  stopDemoAnswering(); // demo hook — delete this line to remove pretend-host mode
   const leaderboard = rankPlayers(Object.values(players));
   channel.send({ type: 'broadcast', event: 'game_over', payload: { leaderboard } });
   renderPodium(leaderboard, '#podium');
