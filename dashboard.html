@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — Quiz Arena</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <section class="screen">
+    <div style="display:flex;justify-content:space-between;align-items:center;width:100%;max-width:320px;">
+      <div class="logo" style="font-size:24px;">QUIZ <span>ARENA</span></div>
+      <button class="muted-link" id="btn-sign-out" style="background:none;">Sign out</button>
+    </div>
+
+    <div class="card">
+      <a href="/host.html" class="btn btn--lime" style="display:block;text-decoration:none;text-align:center;margin-bottom:14px;">
+        Host a game
+      </a>
+      <a href="/manage.html" class="btn btn--ghost" style="display:block;text-decoration:none;text-align:center;">
+        Manage quizzes
+      </a>
+    </div>
+  </section>
+
+  <script type="module" src="/js/dashboard.js"></script>
+</body>
+</html>
