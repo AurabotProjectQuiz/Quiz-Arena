@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Log in — Quiz Arena</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <section class="screen">
+    <div class="logo">QUIZ <span>ARENA</span></div>
+    <span class="eyebrow">Teacher / admin login</span>
+    <div class="card">
+      <div class="field">
+        <label for="input-email">Email</label>
+        <input id="input-email" type="email" autocomplete="username" />
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label for="input-password">Password</label>
+        <input id="input-password" type="password" autocomplete="current-password" />
+      </div>
+      <button class="btn btn--lime" id="btn-login" style="margin-top:20px;">Log in</button>
+      <p class="error-text" id="login-error" style="margin-top:10px;"></p>
+    </div>
+    <a href="/index.html" class="muted-link">&larr; back</a>
+  </section>
+
+  <script type="module" src="/js/login.js"></script>
+</body>
+</html>
