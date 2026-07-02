@@ -12,14 +12,16 @@
 
   <!-- Quiz list -->
   <section id="screen-list" class="screen screen--top">
-    <h1 class="display" style="font-size:28px;">Manage quizzes</h1>
+    <div style="display:flex;justify-content:space-between;align-items:center;width:100%;max-width:640px;">
+      <h1 class="display" style="font-size:28px;">Manage quizzes</h1>
+      <button class="muted-link" id="btn-sign-out" style="background:none;">Sign out</button>
+    </div>
     <div class="card" style="max-width:640px;">
       <button class="btn btn--lime" id="btn-new-quiz" style="margin-bottom:16px;">
         + New quiz
       </button>
       <div id="quiz-list">Loading quizzes…</div>
     </div>
-    <a href="/index.html" class="muted-link">&larr; back</a>
   </section>
 
   <!-- Quiz editor: title/topic + question blocks -->
