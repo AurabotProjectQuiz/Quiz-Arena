@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manage Quizzes — Quiz Arena</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+  <!-- Quiz list -->
+  <section id="screen-list" class="screen screen--top">
+    <h1 class="display" style="font-size:28px;">Manage quizzes</h1>
+    <div class="card" style="max-width:640px;">
+      <button class="btn btn--lime" id="btn-new-quiz" style="margin-bottom:16px;">
+        + New quiz
+      </button>
+      <div id="quiz-list">Loading quizzes…</div>
+    </div>
+    <a href="/index.html" class="muted-link">&larr; back</a>
+  </section>
+
+  <!-- Quiz editor: title/topic + question blocks -->
+  <section id="screen-editor" class="screen screen--top" hidden>
+    <h1 class="display" style="font-size:24px;" id="editor-heading">New quiz</h1>
+    <div class="editor-wrap">
+      <div class="card">
+        <div class="field">
+          <label for="quiz-title">Quiz title</label>
+          <input id="quiz-title" placeholder="e.g. World Capitals" autocomplete="off" />
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="quiz-topic">Topic</label>
+          <input id="quiz-topic" placeholder="e.g. Geography" autocomplete="off" />
+        </div>
+      </div>
+
+      <div id="questions-container"></div>
+
+      <button class="btn btn--ghost" id="btn-add-question">+ Add question</button>
+
+      <p class="qb-hint center-text">
+        Fill in 2–4 answers per question and select the correct one.
+        Leave an answer blank to only offer fewer options.
+      </p>
+
+      <div class="editor-actions">
+        <button class="btn btn--ghost" id="btn-cancel-editor">Cancel</button>
+        <button class="btn btn--lime" id="btn-save-quiz">Save quiz</button>
+      </div>
+
+      <button class="btn" id="btn-delete-quiz" style="background:var(--danger);" hidden>
+        Delete this quiz
+      </button>
+
+      <p class="error-text" id="editor-error"></p>
+    </div>
+  </section>
+
+  <script type="module" src="/js/manage.js"></script>
+</body>
+</html>
