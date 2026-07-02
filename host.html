@@ -17,6 +17,10 @@
       <button class="muted-link" id="btn-sign-out" style="background:none;">Sign out</button>
     </div>
     <h1 class="display" style="font-size:28px;">Pick a quiz</h1>
+    <div class="mode-tabs" style="width:100%;max-width:480px;">
+      <button type="button" class="mode-tab selected" id="mode-classic">🧠 Classic Quiz</button>
+      <button type="button" class="mode-tab" id="mode-board">🐍🛗 Eels &amp; Escalators</button>
+    </div>
     <div class="card" id="quiz-list-card">
       <div id="quiz-list">Loading quizzes…</div>
     </div>
@@ -28,6 +32,7 @@
     <span class="eyebrow">Join at your link</span>
     <div class="join-code-display" id="join-code-display">·····</div>
     <p class="center-text" id="lobby-quiz-title"></p>
+    <p class="center-text" id="lobby-mode-label" style="color:var(--lime);font-family:var(--font-display);font-size:12px;text-transform:uppercase;letter-spacing:0.08em;margin-top:-8px;"></p>
     <div class="player-count"><span id="player-count">0</span> players joined</div>
     <div class="player-roster" id="player-roster"></div>
 
@@ -45,8 +50,15 @@
   <!-- STEP 3: live game — everyone working through questions at their own pace -->
   <section id="screen-live" class="screen screen--top" hidden>
     <span class="eyebrow"><span id="finished-count">0</span> / <span id="total-count">0</span> finished</span>
-    <h1 class="display" style="font-size:24px;">Live standings</h1>
+    <h1 class="display" style="font-size:24px;" id="live-heading">Live standings</h1>
+    <div class="board-timer-banner" id="board-timer-banner" hidden>
+      ⏱️ Final 60 seconds — <span id="board-timer-count">60</span>s left!
+    </div>
     <div class="leaderboard" id="leaderboard"></div>
+    <div id="board-view" hidden>
+      <div class="board-start-row" id="board-start-row"></div>
+      <div class="board-grid" id="board-grid"></div>
+    </div>
     <button class="btn btn--ghost" id="btn-end-game" style="max-width:280px;">
       End game
     </button>

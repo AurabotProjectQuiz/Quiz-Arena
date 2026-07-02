@@ -65,10 +65,22 @@
     </div>
   </section>
 
+  <!-- STEP 4b: board-mode round result (Eels & Escalators only) -->
+  <section id="screen-round-result" class="screen" hidden>
+    <span class="eyebrow" id="round-result-eyebrow">Round result</span>
+    <h2 class="display" style="font-size:24px;" id="round-result-headline"></h2>
+    <div class="card center-text" style="max-width:320px;">
+      <p id="round-result-detail" style="margin:0 0 10px;color:var(--text-dim);"></p>
+      <span class="eyebrow" style="margin-bottom:4px;">You're on square</span>
+      <div class="display" style="font-size:44px;color:var(--lime);" id="round-result-square">0</div>
+      <p style="color:var(--text-faint);font-size:13px;margin-top:4px;">out of 100</p>
+    </div>
+  </section>
+
   <!-- STEP 5: this player has answered every question -->
   <section id="screen-done" class="screen" hidden>
     <span class="eyebrow">All done!</span>
-    <h2 class="display" style="font-size:24px;">You finished the quiz 🎉</h2>
+    <h2 class="display" style="font-size:24px;" id="done-headline">You finished the quiz 🎉</h2>
     <div class="card center-text" style="max-width:300px;">
       <span class="eyebrow">Your score</span>
       <div class="display" style="font-size:36px;color:var(--lime);" id="done-total-score">0</div>
