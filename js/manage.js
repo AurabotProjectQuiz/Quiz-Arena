@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient.js';
-import { escapeHtml, $ } from './utils.js';
+import { escapeHtml, shuffle, $ } from './utils.js';
 import { requireRole } from './authGuard.js';
 
 const OPTION_LETTERS = ['a', 'b', 'c', 'd'];
@@ -197,7 +197,10 @@ function parseAiReply(raw) {
     if (!questionText) throw new Error(`Question ${i + 1} is missing its question text.`);
     if (rawOptions.length < 2) throw new Error(`Question ${i + 1} ("${questionText}") needs at least 2 answer options.`);
 
-    const options = rawOptions.map((text, idx) => ({ id: OPTION_LETTERS[idx], text }));
+    // The model tends to list the correct answer first — shuffle before
+    // assigning letters so the correct option isn't always "a".
+    const shuffledOptions = shuffle(rawOptions);
+    const options = shuffledOptions.map((text, idx) => ({ id: OPTION_LETTERS[idx], text }));
     const correctRaw = (q?.correctAnswer ?? '').toString().trim().toLowerCase();
     const match = options.find((o) => o.text.toLowerCase() === correctRaw);
 

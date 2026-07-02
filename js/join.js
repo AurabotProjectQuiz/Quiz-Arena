@@ -105,7 +105,15 @@ async function joinGame() {
 // works through their own shuffled order at their own pace.
 // ------------------------------------------------------------
 function onGameStart(payload) {
-  myQueue = shuffle(payload.questions);
+  // Shuffle the order questions appear in for this player, AND shuffle
+  // each question's answer options independently — so the correct
+  // answer isn't reliably in the same position (e.g. always "a")
+  // regardless of how the quiz bank was authored or generated.
+  const withShuffledOptions = payload.questions.map((q) => ({
+    ...q,
+    options: shuffle(q.options),
+  }));
+  myQueue = shuffle(withShuffledOptions);
   myIndex = -1;
   myScore = 0;
   showNextQuestion();
