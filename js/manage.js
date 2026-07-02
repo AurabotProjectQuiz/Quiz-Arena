@@ -59,6 +59,200 @@ async function loadQuizList() {
 $('#btn-new-quiz').addEventListener('click', () => openEditor(null));
 
 // ------------------------------------------------------------
+// AI quiz generator — Step 1: build a copyable prompt for Claude
+// ------------------------------------------------------------
+function buildAiPrompt({ topic, ageLevel, numQuestions }) {
+  return `Create a multiple-choice quiz question bank for a quiz app.
+
+Topic: ${topic}
+Audience / age level: ${ageLevel || 'general audience'}
+Number of questions: ${numQuestions}
+
+Return ONLY valid JSON — no markdown code fences, no headings, no commentary before or after it. Match this exact shape:
+
+{
+  "title": "short catchy quiz title (5 words or fewer)",
+  "topic": "${topic}",
+  "questions": [
+    {
+      "question": "question text",
+      "options": ["option 1", "option 2", "option 3", "option 4"],
+      "correctAnswer": "the option text that is correct, copied exactly from options",
+      "timeLimitSeconds": 20
+    }
+  ]
+}
+
+Rules:
+- Include exactly ${numQuestions} questions.
+- Each question needs between 2 and 4 answer options.
+- "correctAnswer" must be an exact copy of one of the strings in "options".
+- Vary "timeLimitSeconds" between 10 and 45 depending on difficulty (harder questions get more time).
+- Keep questions accurate and age-appropriate for: ${ageLevel || 'a general audience'}.
+- Do not repeat questions or answers across the set.
+- Output raw JSON only — it will be pasted directly into a program that calls JSON.parse() on it.`;
+}
+
+function resetAiModal() {
+  $('#ai-topic').value = '';
+  $('#ai-age-level').value = '';
+  $('#ai-num-questions').value = 10;
+  $('#ai-step1-error').textContent = '';
+  $('#ai-prompt-output').value = '';
+  $('#ai-paste-input').value = '';
+  $('#ai-modal-error').textContent = '';
+  $('#copy-feedback').textContent = '';
+  $('#ai-prompt-section').hidden = true;
+}
+
+$('#btn-open-ai-modal').addEventListener('click', () => {
+  resetAiModal();
+  $('#ai-modal').hidden = false;
+});
+
+function closeAiModal() {
+  $('#ai-modal').hidden = true;
+}
+
+$('#btn-close-ai-modal').addEventListener('click', closeAiModal);
+$('#ai-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'ai-modal') closeAiModal(); // click on the dim overlay itself
+});
+
+$('#btn-generate-prompt').addEventListener('click', () => {
+  const errorEl = $('#ai-step1-error');
+  errorEl.textContent = '';
+
+  const topic = $('#ai-topic').value.trim();
+  const ageLevel = $('#ai-age-level').value.trim();
+  const numQuestions = parseInt($('#ai-num-questions').value, 10);
+
+  if (!topic) return (errorEl.textContent = 'Give the quiz a topic first.');
+  if (!numQuestions || numQuestions < 1 || numQuestions > 30) {
+    return (errorEl.textContent = 'Number of questions should be between 1 and 30.');
+  }
+
+  $('#ai-prompt-output').value = buildAiPrompt({ topic, ageLevel, numQuestions });
+  $('#ai-prompt-section').hidden = false;
+  $('#ai-prompt-section').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+
+$('#btn-copy-prompt').addEventListener('click', async () => {
+  const text = $('#ai-prompt-output').value;
+  const feedback = $('#copy-feedback');
+  try {
+    await navigator.clipboard.writeText(text);
+    feedback.textContent = 'Copied! Paste it into Claude.';
+  } catch {
+    // Clipboard API unavailable (older browser / insecure context) — fall
+    // back to select-and-copy so the user can still Cmd/Ctrl+C manually.
+    const ta = $('#ai-prompt-output');
+    ta.select();
+    feedback.textContent = 'Press Cmd/Ctrl+C to copy the selected text.';
+  }
+  setTimeout(() => (feedback.textContent = ''), 4000);
+});
+
+// ------------------------------------------------------------
+// AI quiz generator — Step 3: parse Claude's reply into quiz data
+// ------------------------------------------------------------
+function parseAiReply(raw) {
+  let text = raw.trim();
+  if (!text) throw new Error('Paste Claude\'s reply first.');
+
+  // Claude sometimes wraps JSON in a ```json ... ``` fence despite
+  // instructions not to — strip it if present rather than failing.
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenceMatch) {
+    text = fenceMatch[1].trim();
+  } else {
+    // Also handle stray text before/after a bare { ... } object.
+    const braceStart = text.indexOf('{');
+    const braceEnd = text.lastIndexOf('}');
+    if (braceStart !== -1 && braceEnd > braceStart) {
+      text = text.slice(braceStart, braceEnd + 1);
+    }
+  }
+
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error('That doesn\'t look like valid JSON. Make sure you copied Claude\'s entire reply and try again.');
+  }
+
+  if (!data || !Array.isArray(data.questions) || data.questions.length === 0) {
+    throw new Error('The JSON is missing a non-empty "questions" array.');
+  }
+
+  const title = (data.title ?? '').toString().trim() || 'Untitled quiz';
+  const topic = (data.topic ?? '').toString().trim() || 'General';
+
+  const questions = data.questions.map((q, i) => {
+    const questionText = (q?.question ?? '').toString().trim();
+    const rawOptions = Array.isArray(q?.options)
+      ? q.options.map((o) => (o ?? '').toString().trim()).filter(Boolean).slice(0, 4)
+      : [];
+
+    if (!questionText) throw new Error(`Question ${i + 1} is missing its question text.`);
+    if (rawOptions.length < 2) throw new Error(`Question ${i + 1} ("${questionText}") needs at least 2 answer options.`);
+
+    const options = rawOptions.map((text, idx) => ({ id: OPTION_LETTERS[idx], text }));
+    const correctRaw = (q?.correctAnswer ?? '').toString().trim().toLowerCase();
+    const match = options.find((o) => o.text.toLowerCase() === correctRaw);
+
+    if (!match) {
+      throw new Error(`Question ${i + 1} ("${questionText}"): correctAnswer doesn't exactly match any of its options.`);
+    }
+
+    const timeLimitSeconds = Number(q?.timeLimitSeconds);
+    return {
+      question_text: questionText,
+      options,
+      correct_option_id: match.id,
+      time_limit_seconds: Number.isFinite(timeLimitSeconds)
+        ? Math.min(120, Math.max(5, Math.round(timeLimitSeconds)))
+        : 20,
+    };
+  });
+
+  return { title, topic, questions };
+}
+
+$('#btn-import-ai').addEventListener('click', () => {
+  const errorEl = $('#ai-modal-error');
+  errorEl.textContent = '';
+
+  let parsed;
+  try {
+    parsed = parseAiReply($('#ai-paste-input').value);
+  } catch (err) {
+    errorEl.textContent = err.message;
+    return;
+  }
+
+  openEditorPrefilled(parsed.title, parsed.topic, parsed.questions);
+});
+
+// Prefill the editor with AI-generated quiz data, but require the same
+// "Save quiz" click as manual creation — nothing is written to the
+// database until the teacher reviews it and saves.
+function openEditorPrefilled(title, topic, questions) {
+  currentQuizId = null;
+  $('#editor-error').textContent = '';
+  $('#editor-heading').textContent = 'New quiz (from AI) — review before saving';
+  $('#quiz-title').value = title;
+  $('#quiz-topic').value = topic;
+  $('#questions-container').innerHTML = '';
+  $('#btn-delete-quiz').hidden = true;
+
+  for (const q of questions) addQuestionBlock(q);
+
+  closeAiModal();
+  showScreen('editor');
+}
+
+// ------------------------------------------------------------
 // Editor: load an existing quiz, or start blank
 // ------------------------------------------------------------
 async function openEditor(quizId) {
