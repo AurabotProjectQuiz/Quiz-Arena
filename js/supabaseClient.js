@@ -6,7 +6,7 @@
 // ============================================================
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const SUPABASE_URL = 'https://abcdefgh.supabase.co';
+const SUPABASE_URL = 'https://veejwshsxzwssiuzlpru.supabase.co';
    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlZWp3c2hzeHp3c3NpdXpscHJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5NzI3NzAsImV4cCI6MjA5ODU0ODc3MH0.LsIT2Yiuy1-CMRJ-GQooqruTtHi_9_c3MqQuYgsMg8Y';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
