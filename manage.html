@@ -17,12 +17,71 @@
       <button class="muted-link" id="btn-sign-out" style="background:none;">Sign out</button>
     </div>
     <div class="card" style="max-width:640px;">
-      <button class="btn btn--lime" id="btn-new-quiz" style="margin-bottom:16px;">
-        + New quiz
-      </button>
+      <div class="btn-row" style="margin-bottom:16px;">
+        <button class="btn btn--lime" id="btn-new-quiz">
+          + New quiz
+        </button>
+        <button class="btn btn--ghost" id="btn-open-ai-modal">
+          ✨ Generate with AI
+        </button>
+      </div>
       <div id="quiz-list">Loading quizzes…</div>
     </div>
   </section>
+
+  <!-- AI quiz-generate modal -->
+  <div class="modal-overlay" id="ai-modal" hidden>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="display" style="font-size:20px;">✨ Generate a quiz with Claude</h2>
+        <button type="button" class="icon-btn" id="btn-close-ai-modal" title="Close">✕</button>
+      </div>
+
+      <div>
+        <span class="ai-step-label">Step 1 — what's the quiz about?</span>
+        <div class="field" style="margin-top:12px;">
+          <label for="ai-topic">Topic</label>
+          <input id="ai-topic" placeholder="e.g. The Solar System" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="ai-age-level">Age / grade level</label>
+          <input id="ai-age-level" placeholder="e.g. Year 7, ages 11–12" autocomplete="off" />
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="ai-num-questions">Number of questions</label>
+          <input id="ai-num-questions" type="number" min="1" max="30" value="10" />
+        </div>
+      </div>
+
+      <button type="button" class="btn btn--lime" id="btn-generate-prompt">Generate prompt</button>
+      <p class="error-text" id="ai-step1-error"></p>
+
+      <div id="ai-prompt-section" hidden>
+        <hr class="modal-divider" />
+
+        <span class="ai-step-label">Step 2 — copy this into Claude</span>
+        <p class="ai-step-desc">Paste it into a Claude chat (the button opens one), let it reply, then come back here.</p>
+        <div class="field" style="margin-bottom:8px;">
+          <textarea id="ai-prompt-output" class="mono" rows="9" readonly></textarea>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn btn--ghost" id="btn-copy-prompt">Copy prompt</button>
+          <a class="btn btn--ghost" href="https://claude.ai/new" target="_blank" rel="noopener" style="text-align:center;display:flex;align-items:center;justify-content:center;">Open Claude ↗</a>
+        </div>
+        <p class="copy-feedback" id="copy-feedback"></p>
+
+        <hr class="modal-divider" />
+
+        <span class="ai-step-label">Step 3 — paste Claude's reply here</span>
+        <p class="ai-step-desc">Paste the whole response, JSON and all — extra text around it is fine.</p>
+        <div class="field" style="margin-bottom:8px;">
+          <textarea id="ai-paste-input" rows="9" placeholder="Paste Claude's reply here…"></textarea>
+        </div>
+        <button type="button" class="btn btn--lime" id="btn-import-ai">Create quiz from this</button>
+        <p class="error-text" id="ai-modal-error"></p>
+      </div>
+    </div>
+  </div>
 
   <!-- Quiz editor: title/topic + question blocks -->
   <section id="screen-editor" class="screen screen--top" hidden>
