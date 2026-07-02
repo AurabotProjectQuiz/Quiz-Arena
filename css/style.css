@@ -417,6 +417,11 @@ input {
   flex-direction: column;
   gap: 10px;
 }
+/* Same author-CSS-overrides-[hidden] issue as .screen — needed now that
+   host.js toggles #leaderboard's hidden state when switching game modes. */
+.leaderboard[hidden] {
+  display: none;
+}
 
 .leaderboard-row {
   display: grid;
@@ -770,5 +775,124 @@ input {
   border: none;
   border-top: 1px solid var(--border);
   margin: 4px 0;
+}
+
+/* ---------- Eels & Escalators: mode picker ---------- */
+
+.mode-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.mode-tab {
+  flex: 1;
+  padding: 12px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-family: var(--font-display);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.mode-tab.selected {
+  border-color: var(--lime);
+  color: var(--lime);
+  background: rgba(163, 230, 53, 0.1);
+}
+
+/* ---------- Eels & Escalators: board view ---------- */
+
+.board-timer-banner {
+  background: rgba(248, 113, 113, 0.15);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  text-align: center;
+  font-weight: 600;
+  margin-bottom: 12px;
+  width: 100%;
+  max-width: 640px;
+}
+
+.board-start-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  min-height: 22px;
+  width: 100%;
+  max-width: 640px;
+}
+.start-label {
+  font-family: var(--font-display);
+  font-size: 11px;
+  color: var(--lime);
+  margin-right: 4px;
+}
+
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 2px;
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+}
+.board-cell {
+  aspect-ratio: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 2px;
+  position: relative;
+  overflow: hidden;
+}
+.cell-num {
+  font-weight: 700;
+  font-size: 9px;
+  color: var(--text-faint);
+  line-height: 1;
+}
+.cell-feature {
+  font-size: 10px;
+  line-height: 1;
+}
+.board-cell.cell-escalator {
+  background: rgba(163, 230, 53, 0.15);
+  border-color: var(--lime);
+}
+.board-cell.cell-eel {
+  background: rgba(248, 113, 113, 0.15);
+  border-color: var(--danger);
+}
+.cell-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  justify-content: center;
+  align-items: center;
+  flex: 1;
+}
+.board-token {
+  font-size: 12px;
+  line-height: 1;
+}
+
+@media (max-width: 480px) {
+  .cell-num { font-size: 7px; }
+  .cell-feature { font-size: 8px; }
+  .board-token { font-size: 10px; }
 }
 
