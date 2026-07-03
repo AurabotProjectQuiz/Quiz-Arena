@@ -973,3 +973,31 @@ input {
   font-size: 12px;
 }
 
+/* ---------- lobby QR code ---------- */
+/* Deliberately breaks from the dark theme here — QR scanners need
+   strong light/dark contrast, so this stays a plain white chip
+   regardless of the surrounding page. */
+
+.qr-card {
+  background: #ffffff;
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  box-shadow: var(--shadow);
+}
+.qr-card canvas {
+  display: block;
+  width: 160px;
+  height: 160px;
+}
+.qr-caption {
+  font-family: var(--font-display);
+  font-size: 11px;
+  color: #14132b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
