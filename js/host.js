@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient.js';
-import { calculateScore, rankPlayers } from './scoring.js';
+import { calculateScore, rankPlayers, calculateDuelDamage } from './scoring.js';
 import { generateJoinCode, escapeHtml, shuffle, $ } from './utils.js';
 import { requireRole } from './authGuard.js';
 import { BOARD_SIZE, ESCALATORS, EELS } from './boardConfig.js';
@@ -16,17 +16,20 @@ let channel = null;
 let players = {};           // playerId -> { id, name, emoji, score, answered, ...board fields }
 
 // ------------------------------------------------------------
-// Game mode — 'classic' (existing quiz) or 'board' (Eels & Escalators)
+// Game mode — 'classic' (existing quiz), 'board' (Eels & Escalators),
+// or 'duel' (Firewall Duel)
 // ------------------------------------------------------------
 let gameMode = 'classic';
 
 $('#mode-classic').addEventListener('click', () => setGameMode('classic'));
 $('#mode-board').addEventListener('click', () => setGameMode('board'));
+$('#mode-duel').addEventListener('click', () => setGameMode('duel'));
 
 function setGameMode(mode) {
   gameMode = mode;
   $('#mode-classic').classList.toggle('selected', mode === 'classic');
   $('#mode-board').classList.toggle('selected', mode === 'board');
+  $('#mode-duel').classList.toggle('selected', mode === 'duel');
 }
 
 // Eels & Escalators — board-mode-only state
@@ -34,6 +37,11 @@ let finishedOrderCounter = 0;
 let endgameTimerTimeout = null;
 let endgameTimerInterval = null;
 let endgameTimerStarted = false;
+
+// Firewall Duel — duel-mode-only state
+let duelQueue = [];      // playerIds waiting to be matched
+let activeDuels = {};    // duelId -> { players: [idA, idB], question, answers: {}, resolved, timerHandle }
+let duelCounter = 0;
 
 const screens = ['pick', 'lobby', 'live', 'final'];
 function showScreen(name) {
@@ -125,7 +133,7 @@ async function createGameSession() {
       $('#join-code-display').textContent = code;
       $('#lobby-quiz-title').textContent = `${quiz.title} · ${quiz.topic}`;
       $('#lobby-mode-label').textContent =
-        gameMode === 'board' ? '🐍🛗 Eels & Escalators' : '🧠 Classic Quiz';
+        gameMode === 'board' ? '🐍🛗 Eels & Escalators' : gameMode === 'duel' ? '🔥 Firewall Duel' : '🧠 Classic Quiz';
       showScreen('lobby');
     } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
       const listEl = $('#quiz-list');
@@ -146,12 +154,17 @@ function syncPlayersFromPresence() {
         emoji: meta.emoji,
         score: 0,
         answered: 0,
-        // Eels & Escalators fields — unused in classic mode
+        // Eels & Escalators fields — unused in classic/duel modes
         position: 0,
         roundAnswered: 0,
         roundCorrect: 0,
         finished: false,
         finishOrder: null,
+        // Firewall Duel fields — unused in classic/board modes
+        firewall: 100,
+        wins: 0,
+        breachesDealt: 0,
+        duelOpponentId: null,
       };
     }
   }
@@ -198,6 +211,10 @@ function addDemoPlayers(count = 6) {
       roundCorrect: 0,
       finished: false,
       finishOrder: null,
+      firewall: 100,
+      wins: 0,
+      breachesDealt: 0,
+      duelOpponentId: null,
     };
   });
   renderRoster();
@@ -211,6 +228,23 @@ function startDemoAnswering() {
 
   clearInterval(demoAnswerInterval);
   demoAnswerInterval = setInterval(() => {
+    if (gameMode === 'duel') {
+      // Bots can only "answer" while they're actually paired in a live
+      // duel and haven't submitted yet — matchmaking handles the rest.
+      const waitingBots = Object.values(activeDuels)
+        .filter((d) => !d.resolved)
+        .flatMap((d) => d.players.map((pid) => ({ pid, duel: d })))
+        .filter(({ pid, duel }) => players[pid]?.isDemo && !duel.answers[pid]);
+      if (waitingBots.length === 0) return;
+      const { pid, duel } = waitingBots[Math.floor(Math.random() * waitingBots.length)];
+      const willBeCorrect = Math.random() < 0.7;
+      const wrongOption = duel.question.options.find((o) => o.id !== duel.question.correct_option_id);
+      const optionId = willBeCorrect ? duel.question.correct_option_id : (wrongOption ? wrongOption.id : null);
+      const timeTakenMs = Math.random() * duel.question.time_limit_seconds * 1000;
+      handleAnswer({ playerId: pid, duelId: duel.id, questionId: duel.question.id, optionId, timeTakenMs });
+      return;
+    }
+
     const stillGoing =
       gameMode === 'board'
         ? Object.values(players).filter((p) => p.isDemo && !p.finished)
@@ -243,6 +277,7 @@ $('#btn-start-game').addEventListener('click', startGame);
 
 function startGame() {
   if (gameMode === 'board') return startBoardGame();
+  if (gameMode === 'duel') return startDuelGame();
 
   // Send every player the full question set (no correct answers) in one
   // message. Each player shuffles it into their own order client-side and
@@ -258,6 +293,7 @@ function startGame() {
   $('#live-heading').textContent = 'Live standings';
   $('#leaderboard').hidden = false;
   $('#board-view').hidden = true;
+  $('#duel-view').hidden = true;
 
   channel.send({ type: 'broadcast', event: 'game_start', payload: { mode: 'classic', questions: sanitized } });
 
@@ -297,6 +333,7 @@ function startBoardGame() {
   $('#live-heading').textContent = '🐍🛗 Eels & Escalators';
   $('#leaderboard').hidden = true;
   $('#board-view').hidden = false;
+  $('#duel-view').hidden = true;
 
   channel.send({ type: 'broadcast', event: 'game_start', payload: { mode: 'board', questions: sanitized } });
 
@@ -308,12 +345,109 @@ function startBoardGame() {
 }
 
 // ------------------------------------------------------------
+// Firewall Duel — game start: reset every player's firewall/wins,
+// queue everyone up, and let matchmaking pair the first duels.
+// ------------------------------------------------------------
+function startDuelGame() {
+  duelQueue = [];
+  activeDuels = {};
+  duelCounter = 0;
+
+  for (const p of Object.values(players)) {
+    p.firewall = 100;
+    p.wins = 0;
+    p.breachesDealt = 0;
+    p.duelOpponentId = null;
+    duelQueue.push(p.id);
+  }
+  duelQueue = shuffle(duelQueue);
+
+  $('#live-heading').textContent = '🔥 Firewall Duel';
+  $('#leaderboard').hidden = false;
+  $('#board-view').hidden = true;
+  $('#duel-view').hidden = false;
+  $('#total-count').textContent = Object.keys(players).length;
+  $('#finished-count').textContent = '0';
+
+  channel.send({ type: 'broadcast', event: 'game_start', payload: { mode: 'duel' } });
+
+  renderLeaderboard(rankDuelPlayers(Object.values(players)), '#leaderboard');
+  tryMatchmaking();
+  showScreen('live');
+
+  startDemoAnswering(); // demo hook — delete this line to remove pretend-host mode
+}
+
+// ------------------------------------------------------------
+// Firewall Duel — matchmaking: pair up any two waiting players and
+// send them the same random question. Runs again after every
+// resolution, so players requeue into a fresh duel almost instantly.
+// ------------------------------------------------------------
+function tryMatchmaking() {
+  while (duelQueue.length >= 2) {
+    const aId = duelQueue.shift();
+    const bId = duelQueue.shift();
+    if (!players[aId] || !players[bId]) {
+      // One side vanished (not currently possible — players are never
+      // removed once they join — but keep the other one in the queue
+      // rather than silently dropping them, in case that ever changes).
+      if (players[aId]) duelQueue.unshift(aId);
+      if (players[bId]) duelQueue.unshift(bId);
+      continue;
+    }
+
+    const duelId = `duel-${++duelCounter}`;
+    const question = questions[Math.floor(Math.random() * questions.length)];
+
+    players[aId].duelOpponentId = bId;
+    players[bId].duelOpponentId = aId;
+
+    activeDuels[duelId] = {
+      id: duelId,
+      players: [aId, bId],
+      question,
+      answers: {},
+      resolved: false,
+      timerHandle: null,
+    };
+
+    const sanitizedQuestion = {
+      id: question.id,
+      text: question.question_text,
+      options: question.options,
+      timeLimitSeconds: question.time_limit_seconds,
+    };
+
+    channel.send({
+      type: 'broadcast',
+      event: 'duel_start',
+      payload: {
+        duelId,
+        question: sanitizedQuestion,
+        players: {
+          [aId]: { name: players[aId].name, emoji: players[aId].emoji, firewall: players[aId].firewall },
+          [bId]: { name: players[bId].name, emoji: players[bId].emoji, firewall: players[bId].firewall },
+        },
+      },
+    });
+
+    activeDuels[duelId].timerHandle = setTimeout(
+      () => resolveDuel(duelId),
+      question.time_limit_seconds * 1000 + 1000
+    );
+  }
+
+  renderDuelView();
+}
+
+// ------------------------------------------------------------
 // Step 3: live scoring — answers arrive asynchronously, any player,
 // any question, any time. Host validates + scores + relays the result
 // back (filtered client-side by playerId) plus the refreshed leaderboard.
 // ------------------------------------------------------------
 function handleAnswer(payload) {
   if (gameMode === 'board') return handleBoardAnswer(payload);
+  if (gameMode === 'duel') return handleDuelAnswer(payload);
 
   const { playerId, questionId, optionId, timeTakenMs } = payload;
   const player = players[playerId];
@@ -343,6 +477,149 @@ function handleAnswer(payload) {
 
   renderLeaderboard(leaderboard, '#leaderboard');
   updateFinishedCount();
+}
+
+// ------------------------------------------------------------
+// Firewall Duel — both duelists answer independently and asynchronously
+// (same relay pattern as everywhere else); once both have answered, or
+// the duel's own timer runs out, the round resolves immediately.
+// ------------------------------------------------------------
+function handleDuelAnswer(payload) {
+  const { playerId, duelId, questionId, optionId, timeTakenMs } = payload;
+  const duel = activeDuels[duelId];
+  if (!duel || duel.resolved) return; // stale — this duel already resolved
+  if (questionId !== duel.question.id) return;
+  if (duel.answers[playerId]) return; // already answered this round
+  if (!duel.players.includes(playerId)) return;
+
+  duel.answers[playerId] = { optionId, timeTakenMs };
+
+  const [aId, bId] = duel.players;
+  if (duel.answers[aId] && duel.answers[bId]) {
+    resolveDuel(duelId);
+  }
+}
+
+function resolveDuel(duelId) {
+  const duel = activeDuels[duelId];
+  if (!duel || duel.resolved) return;
+  duel.resolved = true;
+  clearTimeout(duel.timerHandle);
+
+  const [aId, bId] = duel.players;
+  const a = players[aId];
+  const b = players[bId];
+  const q = duel.question;
+  const aAns = duel.answers[aId];
+  const bAns = duel.answers[bId];
+  const aCorrect = !!aAns && aAns.optionId === q.correct_option_id;
+  const bCorrect = !!bAns && bAns.optionId === q.correct_option_id;
+
+  let damageToA = 0;
+  let damageToB = 0;
+  if (aCorrect && bCorrect) {
+    // Both right — whoever was faster lands the hit.
+    if (aAns.timeTakenMs <= bAns.timeTakenMs) damageToB = calculateDuelDamage(aAns.timeTakenMs, q.time_limit_seconds);
+    else damageToA = calculateDuelDamage(bAns.timeTakenMs, q.time_limit_seconds);
+  } else if (aCorrect) {
+    damageToB = calculateDuelDamage(aAns.timeTakenMs, q.time_limit_seconds);
+  } else if (bCorrect) {
+    damageToA = calculateDuelDamage(bAns.timeTakenMs, q.time_limit_seconds);
+  } // else: both wrong (or timed out) — no damage either way
+
+  if (damageToB > 0) a.breachesDealt += 1;
+  if (damageToA > 0) b.breachesDealt += 1;
+
+  a.firewall = Math.max(0, a.firewall - damageToA);
+  b.firewall = Math.max(0, b.firewall - damageToB);
+
+  const aBroken = a.firewall <= 0;
+  const bBroken = b.firewall <= 0;
+  if (aBroken) {
+    b.wins += 1;
+    a.firewall = 100; // reboot
+  }
+  if (bBroken) {
+    a.wins += 1;
+    b.firewall = 100;
+  }
+
+  channel.send({
+    type: 'broadcast',
+    event: 'duel_result',
+    payload: {
+      duelId,
+      results: {
+        [aId]: { yourDamageDealt: damageToB, damageTaken: damageToA, firewall: a.firewall, broken: aBroken, opponentBroken: bBroken },
+        [bId]: { yourDamageDealt: damageToA, damageTaken: damageToB, firewall: b.firewall, broken: bBroken, opponentBroken: aBroken },
+      },
+    },
+  });
+
+  delete activeDuels[duelId];
+  a.duelOpponentId = null;
+  b.duelOpponentId = null;
+  duelQueue.push(aId, bId);
+
+  renderLeaderboard(rankDuelPlayers(Object.values(players)), '#leaderboard');
+  tryMatchmaking(); // also re-renders the duel view
+}
+
+function renderDuelView() {
+  const listEl = $('#duel-list');
+  const statusEl = $('#duel-queue-status');
+  statusEl.textContent = duelQueue.length > 0 ? `🔍 ${duelQueue.length} searching for an opponent…` : '';
+
+  const duels = Object.values(activeDuels).filter((d) => !d.resolved);
+  listEl.innerHTML = duels
+    .map((d) => {
+      const [aId, bId] = d.players;
+      const a = players[aId];
+      const b = players[bId];
+      if (!a || !b) return '';
+      return `
+        <div class="duel-card">
+          <div class="duel-vs-side">
+            <span class="duel-vs-emoji">${a.emoji}</span>
+            <span class="duel-vs-name">${escapeHtml(a.name)}</span>
+            <div class="firewall-bar"><div class="firewall-fill" style="width:${a.firewall}%;background:${firewallColor(a.firewall)}"></div></div>
+          </div>
+          <span class="duel-vs-label">⚡</span>
+          <div class="duel-vs-side">
+            <span class="duel-vs-emoji">${b.emoji}</span>
+            <span class="duel-vs-name">${escapeHtml(b.name)}</span>
+            <div class="firewall-bar"><div class="firewall-fill" style="width:${b.firewall}%;background:${firewallColor(b.firewall)}"></div></div>
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+}
+
+function firewallColor(pct) {
+  if (pct > 50) return 'var(--lime)';
+  if (pct > 20) return 'var(--gold)';
+  return 'var(--danger)';
+}
+
+// Firewall Duel ranking: most wins first, breaches dealt breaks ties.
+// `score` is repurposed as "wins" so the existing leaderboard/podium
+// renderers work unchanged.
+function rankDuelPlayers(list) {
+  const sorted = [...list].sort((a, b) => {
+    if (b.wins !== a.wins) return b.wins - a.wins;
+    return b.breachesDealt - a.breachesDealt;
+  });
+  let place = 0;
+  let lastKey = null;
+  return sorted.map((p, i) => {
+    const key = `${p.wins}-${p.breachesDealt}`;
+    if (key !== lastKey) {
+      place = i + 1;
+      lastKey = key;
+    }
+    return { id: p.id, name: p.name, emoji: p.emoji, score: p.wins, place };
+  });
 }
 
 // ------------------------------------------------------------
@@ -550,7 +827,18 @@ function endGame() {
   clearInterval(endgameTimerInterval);
   $('#board-timer-banner').hidden = true;
 
-  const leaderboard = gameMode === 'board' ? rankBoardPlayers(Object.values(players)) : rankPlayers(Object.values(players));
+  // Any duels still in flight won't get to resolve — cancel their timers
+  // so they don't fire after the game screen has already moved on.
+  for (const duel of Object.values(activeDuels)) {
+    clearTimeout(duel.timerHandle);
+  }
+  activeDuels = {};
+  duelQueue = [];
+
+  const leaderboard =
+    gameMode === 'board' ? rankBoardPlayers(Object.values(players))
+    : gameMode === 'duel' ? rankDuelPlayers(Object.values(players))
+    : rankPlayers(Object.values(players));
   channel.send({ type: 'broadcast', event: 'game_over', payload: { leaderboard } });
   renderPodium(leaderboard, '#podium');
   renderLeaderboard(leaderboard, '#final-leaderboard');
@@ -594,6 +882,11 @@ function renderLeaderboard(leaderboard, targetSelector) {
         const finished = players[p.id]?.finished;
         suffix = finished ? `finished 🏁 #${players[p.id].finishOrder}` : `square ${p.score}/${BOARD_SIZE}`;
         barFraction = p.score / BOARD_SIZE;
+      } else if (gameMode === 'duel') {
+        const firewall = players[p.id]?.firewall ?? 100;
+        const breaches = players[p.id]?.breachesDealt ?? 0;
+        suffix = `🛡️ ${firewall}% · ${breaches} breaches`;
+        barFraction = p.score / maxScore;
       } else {
         const answered = players[p.id]?.answered ?? 0;
         suffix = `${answered}/${total}`;

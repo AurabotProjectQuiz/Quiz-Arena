@@ -32,10 +32,14 @@ let pendingRoundResult = null;
 const QUESTIONS_PER_ROUND = 6;
 const BOARD_SIZE = 100;
 
+// Firewall Duel state
+let currentDuelId = null;
+let myFirewall = 100;
+
 const OPTION_CLASSES = ['opt-a', 'opt-b', 'opt-c', 'opt-d'];
 const CIRCUMFERENCE = 2 * Math.PI * 34;
 
-const screens = ['join', 'waiting', 'question', 'reveal', 'round-result', 'done', 'final'];
+const screens = ['join', 'waiting', 'question', 'reveal', 'round-result', 'duel-searching', 'done', 'final'];
 function showScreen(name) {
   for (const s of screens) {
     $(`#screen-${s}`).hidden = s !== name;
@@ -98,6 +102,8 @@ async function joinGame() {
   channel.on('broadcast', { event: 'game_start' }, ({ payload }) => onGameStart(payload));
   channel.on('broadcast', { event: 'answer_result' }, ({ payload }) => onAnswerResult(payload));
   channel.on('broadcast', { event: 'round_result' }, ({ payload }) => onRoundResult(payload));
+  channel.on('broadcast', { event: 'duel_start' }, ({ payload }) => onDuelStart(payload));
+  channel.on('broadcast', { event: 'duel_result' }, ({ payload }) => onDuelResult(payload));
   channel.on('broadcast', { event: 'game_over' }, ({ payload }) => onGameOver(payload));
 
   channel.subscribe(async (status) => {
@@ -127,6 +133,12 @@ function onGameStart(payload) {
     usedThisLap = new Set();
     myPosition = 0;
     startNewRound();
+    return;
+  }
+
+  if (gameMode === 'duel') {
+    myFirewall = 100;
+    enterDuelSearching();
     return;
   }
 
@@ -242,15 +254,29 @@ function submitAnswer(optionId) {
   clearTimer();
 
   const timeTakenMs = performance.now() - questionStartClientTime;
-  channel.send({
-    type: 'broadcast',
-    event: 'answer',
-    payload: { playerId, questionId: currentQuestion.id, optionId, timeTakenMs },
-  });
+  const payload = { playerId, questionId: currentQuestion.id, optionId, timeTakenMs };
+  if (gameMode === 'duel') payload.duelId = currentDuelId;
+
+  channel.send({ type: 'broadcast', event: 'answer', payload });
 
   // Fallback: if the host doesn't respond in time (e.g. connection hiccup),
-  // move on anyway so a stuck message never strands the player.
-  advanceTimeout = setTimeout(() => showNextQuestion(), 4000);
+  // move on anyway so a stuck message never strands the player. Duels wait
+  // on an opponent too, so they get a longer grace period tied to the
+  // question's own time limit rather than a flat 4s.
+  if (gameMode === 'duel') {
+    advanceTimeout = setTimeout(() => enterDuelSearching(), currentQuestion.timeLimitSeconds * 1000 + 6000);
+  } else if (gameMode === 'board') {
+    advanceTimeout = setTimeout(() => {
+      if (roundIndex + 1 < roundQueue.length) {
+        showNextRoundQuestion();
+      } else {
+        waitingForRoundResult = true;
+        maybeShowRoundResult();
+      }
+    }, 4000);
+  } else {
+    advanceTimeout = setTimeout(() => showNextQuestion(), 4000);
+  }
 }
 
 // ------------------------------------------------------------
@@ -348,6 +374,95 @@ function maybeShowRoundResult() {
       startNewRound();
     }
   }, 2600);
+}
+
+// ------------------------------------------------------------
+// Firewall Duel — the host pairs two waiting players and sends them
+// the same question. Answer, see the result, then requeue for the
+// next opponent — same instant-feedback rhythm as every other mode.
+// ------------------------------------------------------------
+function onDuelStart(payload) {
+  if (!payload.players[playerId]) return; // this pairing isn't for me
+
+  currentDuelId = payload.duelId;
+  const opponentId = Object.keys(payload.players).find((id) => id !== playerId);
+  const opponent = payload.players[opponentId];
+  const me = payload.players[playerId];
+  myFirewall = me.firewall;
+
+  $('#duel-my-emoji').textContent = playerEmoji;
+  $('#duel-opponent-emoji').textContent = opponent.emoji;
+  $('#duel-opponent-name').textContent = opponent.name;
+  $('#duel-my-firewall-fill').style.width = `${myFirewall}%`;
+  $('#duel-opp-firewall-fill').style.width = `${opponent.firewall}%`;
+  $('#duel-header').hidden = false;
+
+  currentQuestion = { ...payload.question, options: shuffle(payload.question.options) };
+  answered = false;
+  questionStartClientTime = performance.now();
+
+  $('#progress-label').textContent = `⚡ Duel vs ${opponent.name}`;
+  $('#player-question-text').textContent = currentQuestion.text;
+
+  const grid = $('#player-options-grid');
+  grid.innerHTML = currentQuestion.options
+    .map((opt, i) => `
+      <button type="button" class="option-btn ${OPTION_CLASSES[i]}" data-option-id="${opt.id}">
+        <span class="shape"></span>${escapeHtml(opt.text)}
+      </button>
+    `)
+    .join('');
+  grid.querySelectorAll('.option-btn').forEach((btn) => {
+    btn.addEventListener('click', () => submitAnswer(btn.dataset.optionId));
+  });
+
+  showScreen('question');
+  startTimer(currentQuestion.timeLimitSeconds, () => {
+    if (!answered) submitAnswer(null);
+  });
+}
+
+function onDuelResult(payload) {
+  if (payload.duelId !== currentDuelId) return; // stale — already moved on
+  const mine = payload.results[playerId];
+  if (!mine) return;
+
+  clearTimeout(advanceTimeout);
+  myFirewall = mine.firewall;
+
+  const banner = $('#reveal-banner');
+  if (mine.opponentBroken) {
+    banner.textContent = 'Firewall breached! You win this one 🏆';
+    banner.className = 'reveal-banner correct';
+  } else if (mine.broken) {
+    banner.textContent = 'Your firewall was breached! 😵';
+    banner.className = 'reveal-banner incorrect';
+  } else if (mine.yourDamageDealt > 0) {
+    banner.textContent = `Direct hit — ${mine.yourDamageDealt} damage! ⚡`;
+    banner.className = 'reveal-banner correct';
+  } else if (mine.damageTaken > 0) {
+    banner.textContent = `Took ${mine.damageTaken} damage! 🛡️`;
+    banner.className = 'reveal-banner incorrect';
+  } else {
+    banner.textContent = 'Both firewalls held ⚡';
+    banner.className = 'reveal-banner';
+  }
+  $('#points-earned').textContent = mine.broken ? 'Firewall rebooted to 100%' : `Firewall: ${mine.firewall}%`;
+
+  $('#score-label').textContent = 'Your firewall';
+  $('#my-total-score').textContent = `${myFirewall}%`;
+
+  showScreen('reveal');
+  setTimeout(() => {
+    if (gameEnded) return;
+    enterDuelSearching();
+  }, 1800);
+}
+
+function enterDuelSearching() {
+  currentDuelId = null;
+  $('#duel-searching-firewall').textContent = `${myFirewall}%`;
+  showScreen('duel-searching');
 }
 
 // ------------------------------------------------------------
