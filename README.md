@@ -162,6 +162,36 @@ passes through the host, a future "steal points" or "freeze a rival" effect
 is just another broadcast event addressed to a specific `playerId`, handled
 the same way `answer_result` already is.
 
+## Game modes
+
+The host picks a mode on the "Pick a quiz" screen, before generating the
+join code. All three modes share the same quiz bank and the same
+host-as-relay architecture above — only the round logic differs.
+
+**🧠 Classic Quiz** — every player answers all the quiz's questions, once
+each, in their own shuffled order, at their own pace. Score is the
+Kahoot-style speed bonus described below.
+
+**🐍🛗 Eels & Escalators** — a shared 100-square board (visible on the host
+screen) that every player is racing across. Correct answers move you
+forward; questions are drawn randomly from the quiz bank in batches of 6
+(a "round"), and how many of those 6 you got right is how far you move.
+Landing on an escalator square boosts you up the board; landing on an eel
+sends you sliding back down. First to square 100 wins; once enough
+players finish, a 60-second countdown starts so the rest of the class
+still gets a defined end point rather than waiting on stragglers.
+
+**🔥 Firewall Duel** — the host continuously pairs up waiting players into
+1-on-1 duels. Both players in a duel get the *same* random question at
+the same time; whoever answers correctly and faster deals damage to the
+other's firewall (both correct → the faster one lands the hit; both
+wrong → nothing happens). A firewall broken down to 0% instantly reboots
+to 100%, and the opponent banks a win. Both players immediately requeue
+for a fresh opponent — nobody sits out. The leaderboard ranks by wins,
+tie-broken by total breaches dealt. Damage-per-hit uses the same
+speed-decay shape as classic scoring, just rescaled (`calculateDuelDamage`
+in `js/scoring.js`) so a firewall takes roughly 3–5 solid hits to break.
+
 ### Scoring (v1)
 
 Speed bonus, defined in `js/scoring.js`:
@@ -202,7 +232,9 @@ On the lobby screen there's a **🎭 Pretend Host** button — click it to add
 6 fake players with bot names/emojis. Click **Start game** as normal and
 they'll answer questions automatically (roughly 70% correct, random
 timing) every second or so, so you can watch the live leaderboard reorder,
-finish the game, and see the podium — all from one browser tab.
+finish the game, and see the podium — all from one browser tab. This
+works for all three modes, including Firewall Duel (bots will queue up
+and duel each other, and you if you're playing along from `/join.html`).
 
 This is entirely self-contained and safe to delete once you're done
 testing:
@@ -222,12 +254,16 @@ in the lobby.
 
 ## What's next (per your roadmap)
 
-- **Game modes with sabotage/power-ups.** The architecture already routes
-  every player action through the host, so a mode is: (1) extra broadcast
-  event types like `sabotage` targeted at a specific `playerId`, handled
-  in `join.js` the same way `answer_result` is (check "is this for me"),
-  and (2) alternate scoring/rules dropped into `scoring.js`. The host would
-  pick a mode alongside the quiz topic on the lobby screen.
+- **More game modes.** Firewall Duel (🔥) is built; four other concepts
+  were pitched alongside it and are still on the table if you want more
+  variety later: a shared competitive map ("Outbreak: Antivirus Grid"), a
+  fully cooperative class-vs-boss mode ("Meteor Storm"), team-based play
+  with bankable gadgets ("Heist Crew"), and a space-race skin reusing the
+  Eels & Escalators board engine ("Rocket Race"). Each new mode follows
+  the same recipe: a `mode-<name>` tab, mode-only state alongside the
+  existing `board`/`duel` state blocks in `host.js`, a `start<Name>Game()`
+  dispatched from `startGame()`, a `handle<Name>Answer()` dispatched from
+  `handleAnswer()`, and matching screens/handlers in `join.js`.
 - **Persisting final results** to a `game_results` table (optional, only
   written once at game end — still cheap) so you can review past games.
 - **Reconnect support**: persist `{code, playerId, name, emoji, score}` to

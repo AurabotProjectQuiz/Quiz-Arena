@@ -20,6 +20,7 @@
     <div class="mode-tabs" style="width:100%;max-width:480px;">
       <button type="button" class="mode-tab selected" id="mode-classic">🧠 Classic Quiz</button>
       <button type="button" class="mode-tab" id="mode-board">🐍🛗 Eels &amp; Escalators</button>
+      <button type="button" class="mode-tab" id="mode-duel">🔥 Firewall Duel</button>
     </div>
     <div class="card" id="quiz-list-card">
       <div id="quiz-list">Loading quizzes…</div>
@@ -58,6 +59,10 @@
     <div id="board-view" hidden>
       <div class="board-start-row" id="board-start-row"></div>
       <div class="board-grid" id="board-grid"></div>
+    </div>
+    <div id="duel-view" hidden>
+      <p class="center-text" id="duel-queue-status" style="color:var(--text-dim);"></p>
+      <div class="duel-list" id="duel-list"></div>
     </div>
     <button class="btn btn--ghost" id="btn-end-game" style="max-width:280px;">
       End game
