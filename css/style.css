@@ -988,10 +988,11 @@ input {
   gap: 8px;
   box-shadow: var(--shadow);
 }
-.qr-card canvas {
+.qr-card img {
   display: block;
   width: 160px;
   height: 160px;
+  border-radius: 4px;
 }
 .qr-caption {
   font-family: var(--font-display);
