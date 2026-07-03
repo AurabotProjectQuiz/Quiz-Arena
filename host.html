@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 </head>
 <body>
 
@@ -34,6 +35,10 @@
     <div class="join-code-display" id="join-code-display">·····</div>
     <p class="center-text" id="lobby-quiz-title"></p>
     <p class="center-text" id="lobby-mode-label" style="color:var(--lime);font-family:var(--font-display);font-size:12px;text-transform:uppercase;letter-spacing:0.08em;margin-top:-8px;"></p>
+    <div class="qr-card" id="qr-card">
+      <canvas id="join-qr-canvas"></canvas>
+      <span class="qr-caption">📱 Scan to join</span>
+    </div>
     <div class="player-count"><span id="player-count">0</span> players joined</div>
     <div class="player-roster" id="player-roster"></div>
 
