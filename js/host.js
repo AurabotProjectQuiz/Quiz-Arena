@@ -145,20 +145,22 @@ async function createGameSession() {
 
 // Encodes a direct join link (not just the bare code) so scanning the QR
 // skips straight to the name/emoji screen with the code pre-filled —
-// see js/join.js reading ?code= on load.
+// see js/join.js reading ?code= on load. Uses a public QR-image service
+// via a plain <img> tag rather than a client-side rendering library —
+// simpler and more robust (nothing to silently fail to draw).
 function renderJoinQrCode(joinCode) {
-  const canvas = $('#join-qr-canvas');
+  const img = $('#join-qr-img');
   const joinUrl = `${window.location.origin}/join.html?code=${joinCode}`;
+  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(joinUrl)}`;
 
-  if (typeof QRCode === 'undefined') {
-    console.error('QR code library failed to load — falling back to code-only join.');
+  img.onerror = () => {
+    console.error('QR code image failed to load — falling back to code-only join.');
     $('#qr-card').hidden = true;
-    return;
-  }
-
-  QRCode.toCanvas(canvas, joinUrl, { width: 160, margin: 1, color: { dark: '#14132b', light: '#ffffff' } }, (err) => {
-    if (err) console.error('Failed to render QR code:', err);
-  });
+  };
+  img.onload = () => {
+    $('#qr-card').hidden = false;
+  };
+  img.src = qrImageUrl;
 }
 
 function syncPlayersFromPresence() {
