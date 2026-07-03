@@ -65,6 +65,19 @@ function renderEmojiGrid() {
 renderEmojiGrid();
 
 // ------------------------------------------------------------
+// If this page was opened by scanning the host's QR code, the link
+// includes ?code=XXXXX — pre-fill it so all that's left is picking a
+// name and a character.
+// ------------------------------------------------------------
+(() => {
+  const codeFromUrl = new URLSearchParams(window.location.search).get('code');
+  if (codeFromUrl) {
+    $('#input-code').value = codeFromUrl.toUpperCase();
+    $('#input-name').focus();
+  }
+})();
+
+// ------------------------------------------------------------
 // Step 1: join form
 // ------------------------------------------------------------
 $('#btn-join').addEventListener('click', async () => {

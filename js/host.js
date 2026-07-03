@@ -134,11 +134,30 @@ async function createGameSession() {
       $('#lobby-quiz-title').textContent = `${quiz.title} · ${quiz.topic}`;
       $('#lobby-mode-label').textContent =
         gameMode === 'board' ? '🐍🛗 Eels & Escalators' : gameMode === 'duel' ? '🔥 Firewall Duel' : '🧠 Classic Quiz';
+      renderJoinQrCode(code);
       showScreen('lobby');
     } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
       const listEl = $('#quiz-list');
       listEl.innerHTML = `<p class="error-text">Couldn't connect (${status}). Check the browser console for details — this usually means Realtime isn't reachable for your Supabase project yet.</p>`;
     }
+  });
+}
+
+// Encodes a direct join link (not just the bare code) so scanning the QR
+// skips straight to the name/emoji screen with the code pre-filled —
+// see js/join.js reading ?code= on load.
+function renderJoinQrCode(joinCode) {
+  const canvas = $('#join-qr-canvas');
+  const joinUrl = `${window.location.origin}/join.html?code=${joinCode}`;
+
+  if (typeof QRCode === 'undefined') {
+    console.error('QR code library failed to load — falling back to code-only join.');
+    $('#qr-card').hidden = true;
+    return;
+  }
+
+  QRCode.toCanvas(canvas, joinUrl, { width: 160, margin: 1, color: { dark: '#14132b', light: '#ffffff' } }, (err) => {
+    if (err) console.error('Failed to render QR code:', err);
   });
 }
 
