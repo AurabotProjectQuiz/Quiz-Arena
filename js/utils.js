@@ -44,3 +44,24 @@ export function shuffle(array) {
   }
   return arr;
 }
+
+// ------------------------------------------------------------
+// Confetti burst for the final results screen — pure CSS/DOM, no
+// external library. Pieces remove themselves once their fall animation
+// finishes.
+// ------------------------------------------------------------
+const CONFETTI_EMOJI = ['🎉', '✨', '🎊', '⭐', '💥'];
+
+export function launchConfetti(count = 40) {
+  for (let i = 0; i < count; i++) {
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    piece.textContent = CONFETTI_EMOJI[Math.floor(Math.random() * CONFETTI_EMOJI.length)];
+    piece.style.left = `${Math.random() * 100}vw`;
+    piece.style.fontSize = `${16 + Math.random() * 16}px`;
+    piece.style.animationDuration = `${2 + Math.random() * 1.5}s`;
+    piece.style.animationDelay = `${Math.random() * 0.6}s`;
+    document.body.appendChild(piece);
+    piece.addEventListener('animationend', () => piece.remove());
+  }
+}

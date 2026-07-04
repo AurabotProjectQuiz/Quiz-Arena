@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient.js';
 import { calculateScore, rankPlayers, calculateDuelDamage } from './scoring.js';
-import { generateJoinCode, escapeHtml, shuffle, $ } from './utils.js';
+import { generateJoinCode, escapeHtml, shuffle, launchConfetti, $ } from './utils.js';
 import { requireRole } from './authGuard.js';
 import { BOARD_SIZE, ESCALATORS, EELS } from './boardConfig.js';
 
@@ -42,6 +42,10 @@ let endgameTimerStarted = false;
 let duelQueue = [];      // playerIds waiting to be matched
 let activeDuels = {};    // duelId -> { players: [idA, idB], question, answers: {}, resolved, timerHandle }
 let duelCounter = 0;
+// Duels are meant to feel like a fast reflex showdown, not a full-length
+// quiz question — cap the timer regardless of what the quiz itself has
+// each question set to, so matches resolve (and requeue) quickly.
+const DUEL_TIME_LIMIT_SECONDS = 8;
 
 const screens = ['pick', 'lobby', 'live', 'final'];
 function showScreen(name) {
@@ -261,7 +265,7 @@ function startDemoAnswering() {
       const willBeCorrect = Math.random() < 0.7;
       const wrongOption = duel.question.options.find((o) => o.id !== duel.question.correct_option_id);
       const optionId = willBeCorrect ? duel.question.correct_option_id : (wrongOption ? wrongOption.id : null);
-      const timeTakenMs = Math.random() * duel.question.time_limit_seconds * 1000;
+      const timeTakenMs = Math.random() * duel.timeLimitSeconds * 1000;
       handleAnswer({ playerId: pid, duelId: duel.id, questionId: duel.question.id, optionId, timeTakenMs });
       return;
     }
@@ -419,6 +423,7 @@ function tryMatchmaking() {
 
     const duelId = `duel-${++duelCounter}`;
     const question = questions[Math.floor(Math.random() * questions.length)];
+    const duelTimeLimit = Math.min(question.time_limit_seconds, DUEL_TIME_LIMIT_SECONDS);
 
     players[aId].duelOpponentId = bId;
     players[bId].duelOpponentId = aId;
@@ -427,6 +432,7 @@ function tryMatchmaking() {
       id: duelId,
       players: [aId, bId],
       question,
+      timeLimitSeconds: duelTimeLimit,
       answers: {},
       resolved: false,
       timerHandle: null,
@@ -436,7 +442,7 @@ function tryMatchmaking() {
       id: question.id,
       text: question.question_text,
       options: question.options,
-      timeLimitSeconds: question.time_limit_seconds,
+      timeLimitSeconds: duelTimeLimit,
     };
 
     channel.send({
@@ -454,7 +460,7 @@ function tryMatchmaking() {
 
     activeDuels[duelId].timerHandle = setTimeout(
       () => resolveDuel(duelId),
-      question.time_limit_seconds * 1000 + 1000
+      duelTimeLimit * 1000 + 1000
     );
   }
 
@@ -531,6 +537,7 @@ function resolveDuel(duelId) {
   const a = players[aId];
   const b = players[bId];
   const q = duel.question;
+  const duelTimeLimit = duel.timeLimitSeconds;
   const aAns = duel.answers[aId];
   const bAns = duel.answers[bId];
   const aCorrect = !!aAns && aAns.optionId === q.correct_option_id;
@@ -540,12 +547,12 @@ function resolveDuel(duelId) {
   let damageToB = 0;
   if (aCorrect && bCorrect) {
     // Both right — whoever was faster lands the hit.
-    if (aAns.timeTakenMs <= bAns.timeTakenMs) damageToB = calculateDuelDamage(aAns.timeTakenMs, q.time_limit_seconds);
-    else damageToA = calculateDuelDamage(bAns.timeTakenMs, q.time_limit_seconds);
+    if (aAns.timeTakenMs <= bAns.timeTakenMs) damageToB = calculateDuelDamage(aAns.timeTakenMs, duelTimeLimit);
+    else damageToA = calculateDuelDamage(bAns.timeTakenMs, duelTimeLimit);
   } else if (aCorrect) {
-    damageToB = calculateDuelDamage(aAns.timeTakenMs, q.time_limit_seconds);
+    damageToB = calculateDuelDamage(aAns.timeTakenMs, duelTimeLimit);
   } else if (bCorrect) {
-    damageToA = calculateDuelDamage(bAns.timeTakenMs, q.time_limit_seconds);
+    damageToA = calculateDuelDamage(bAns.timeTakenMs, duelTimeLimit);
   } // else: both wrong (or timed out) — no damage either way
 
   if (damageToB > 0) a.breachesDealt += 1;
@@ -864,6 +871,7 @@ function endGame() {
   renderPodium(leaderboard, '#podium');
   renderLeaderboard(leaderboard, '#final-leaderboard');
   showScreen('final');
+  launchConfetti();
 }
 
 // Board-mode ranking: finished players first (earliest finisher wins),

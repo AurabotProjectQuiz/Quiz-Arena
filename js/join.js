@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient.js';
-import { generatePlayerId, EMOJI_CHOICES, escapeHtml, shuffle, $ } from './utils.js';
+import { generatePlayerId, EMOJI_CHOICES, escapeHtml, shuffle, launchConfetti, $ } from './utils.js';
 
 // ------------------------------------------------------------
 // State
@@ -44,6 +44,18 @@ function showScreen(name) {
   for (const s of screens) {
     $(`#screen-${s}`).hidden = s !== name;
   }
+}
+
+// Full-screen color wash + resets the points-earned color to match,
+// so a correct/wrong answer registers instantly, before you've even
+// read the banner text. Called right before showScreen('reveal').
+function flashRevealScreen(isCorrect) {
+  const el = $('#screen-reveal');
+  el.classList.remove('flash-correct', 'flash-incorrect');
+  void el.offsetWidth; // force reflow so the animation restarts every time
+  el.classList.add(isCorrect ? 'flash-correct' : 'flash-incorrect');
+  $('#points-earned').classList.toggle('correct', isCorrect);
+  $('#points-earned').classList.toggle('incorrect', !isCorrect);
 }
 
 // ------------------------------------------------------------
@@ -219,7 +231,7 @@ function showNextRoundQuestion() {
     `)
     .join('');
   grid.querySelectorAll('.option-btn').forEach((btn) => {
-    btn.addEventListener('click', () => submitAnswer(btn.dataset.optionId));
+    btn.addEventListener('click', () => { btn.classList.add('tapped'); submitAnswer(btn.dataset.optionId); });
   });
 
   showScreen('question');
@@ -252,7 +264,7 @@ function showNextQuestion() {
     `)
     .join('');
   grid.querySelectorAll('.option-btn').forEach((btn) => {
-    btn.addEventListener('click', () => submitAnswer(btn.dataset.optionId));
+    btn.addEventListener('click', () => { btn.classList.add('tapped'); submitAnswer(btn.dataset.optionId); });
   });
 
   showScreen('question');
@@ -313,6 +325,7 @@ function onAnswerResult(payload) {
     }
     $('#points-earned').textContent = '';
     $('#my-total-score').textContent = '';
+    flashRevealScreen(payload.correct);
     showScreen('reveal');
 
     setTimeout(() => {
@@ -341,6 +354,7 @@ function onAnswerResult(payload) {
   }
   $('#my-total-score').textContent = myScore;
 
+  flashRevealScreen(payload.correct);
   showScreen('reveal');
   setTimeout(() => showNextQuestion(), 1400);
 }
@@ -426,7 +440,7 @@ function onDuelStart(payload) {
     `)
     .join('');
   grid.querySelectorAll('.option-btn').forEach((btn) => {
-    btn.addEventListener('click', () => submitAnswer(btn.dataset.optionId));
+    btn.addEventListener('click', () => { btn.classList.add('tapped'); submitAnswer(btn.dataset.optionId); });
   });
 
   showScreen('question');
@@ -444,18 +458,23 @@ function onDuelResult(payload) {
   myFirewall = mine.firewall;
 
   const banner = $('#reveal-banner');
+  let outcome = null; // true = positive flash, false = negative flash, null = no flash (a wash)
   if (mine.opponentBroken) {
     banner.textContent = 'Firewall breached! You win this one 🏆';
     banner.className = 'reveal-banner correct';
+    outcome = true;
   } else if (mine.broken) {
     banner.textContent = 'Your firewall was breached! 😵';
     banner.className = 'reveal-banner incorrect';
+    outcome = false;
   } else if (mine.yourDamageDealt > 0) {
     banner.textContent = `Direct hit — ${mine.yourDamageDealt} damage! ⚡`;
     banner.className = 'reveal-banner correct';
+    outcome = true;
   } else if (mine.damageTaken > 0) {
     banner.textContent = `Took ${mine.damageTaken} damage! 🛡️`;
     banner.className = 'reveal-banner incorrect';
+    outcome = false;
   } else {
     banner.textContent = 'Both firewalls held ⚡';
     banner.className = 'reveal-banner';
@@ -465,6 +484,7 @@ function onDuelResult(payload) {
   $('#score-label').textContent = 'Your firewall';
   $('#my-total-score').textContent = `${myFirewall}%`;
 
+  if (outcome !== null) flashRevealScreen(outcome);
   showScreen('reveal');
   setTimeout(() => {
     if (gameEnded) return;
@@ -508,6 +528,7 @@ function onGameOver(payload) {
   clearTimer();
   clearTimeout(advanceTimeout);
   showScreen('final');
+  launchConfetti();
 }
 
 // ------------------------------------------------------------
