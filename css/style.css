@@ -275,7 +275,15 @@ input {
   animation: chip-in 0.25s ease;
 }
 .player-chip .emoji {
-  font-size: 20px;
+  font-size: 26px;
+  display: inline-block;
+  animation: idle-bounce 1.8s ease-in-out infinite;
+}
+.player-chip:nth-child(3n+2) .emoji { animation-delay: 0.3s; }
+.player-chip:nth-child(3n+3) .emoji { animation-delay: 0.6s; }
+@keyframes idle-bounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-4px) scale(1.08); }
 }
 @keyframes chip-in {
   from { opacity: 0; transform: scale(0.8) translateY(6px); }
@@ -384,6 +392,14 @@ input {
 .option-btn.incorrect {
   outline: 4px solid var(--danger);
 }
+.option-btn.tapped {
+  animation: select-pop 0.25s ease-out;
+}
+@keyframes select-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(0.92); filter: brightness(1.3); }
+  100% { transform: scale(1.04); }
+}
 
 .locked-in {
   font-family: var(--font-display);
@@ -396,16 +412,53 @@ input {
 
 .reveal-banner {
   font-family: var(--font-display);
-  font-size: clamp(26px, 6vw, 42px);
+  font-size: clamp(28px, 7vw, 46px);
   text-align: center;
+  animation: banner-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .reveal-banner.correct { color: var(--lime); }
-.reveal-banner.incorrect { color: var(--danger); }
+.reveal-banner.incorrect {
+  color: var(--danger);
+  animation: banner-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), shake 0.5s ease-in-out 0.35s;
+}
+@keyframes banner-pop {
+  0% { transform: scale(0.3); opacity: 0; }
+  60% { transform: scale(1.18); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes shake {
+  10%, 90% { transform: translateX(-2px); }
+  20%, 80% { transform: translateX(4px); }
+  30%, 50%, 70% { transform: translateX(-8px); }
+  40%, 60% { transform: translateX(8px); }
+}
 
 .points-earned {
-  font-size: 20px;
-  color: var(--text-dim);
+  font-family: var(--font-display);
+  font-size: 22px;
   text-align: center;
+  color: var(--text-dim);
+  animation: points-pop 0.5s ease-out 0.15s both;
+}
+.points-earned.correct { color: var(--lime); }
+.points-earned.incorrect { color: var(--danger); }
+@keyframes points-pop {
+  0% { transform: translateY(10px) scale(0.7); opacity: 0; }
+  60% { transform: translateY(-6px) scale(1.15); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* Full-screen color wash behind the reveal banner, so a correct/wrong
+   answer registers even before you've read the text. */
+#screen-reveal.flash-correct { animation: flash-bg-correct 0.6s ease-out; }
+#screen-reveal.flash-incorrect { animation: flash-bg-incorrect 0.6s ease-out; }
+@keyframes flash-bg-correct {
+  0% { background-color: rgba(200, 255, 77, 0.25); }
+  100% { background-color: transparent; }
+}
+@keyframes flash-bg-incorrect {
+  0% { background-color: rgba(255, 92, 122, 0.25); }
+  100% { background-color: transparent; }
 }
 
 /* ---------- animated leaderboard (signature element) ---------- */
@@ -450,8 +503,12 @@ input {
 .leaderboard-row.rank-3 { border-color: var(--bronze); }
 
 .leaderboard-row .emoji {
-  font-size: 20px;
+  font-size: 26px;
+  display: inline-block;
+  animation: idle-bounce 1.8s ease-in-out infinite;
 }
+.leaderboard-row:nth-child(3n+2) .emoji { animation-delay: 0.3s; }
+.leaderboard-row:nth-child(3n+3) .emoji { animation-delay: 0.6s; }
 
 .leaderboard-row .name {
   font-size: 15px;
@@ -478,6 +535,11 @@ input {
   height: 100%;
   background: linear-gradient(90deg, var(--violet), var(--lime));
   transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: bar-flash-in 0.5s ease-out;
+}
+@keyframes bar-flash-in {
+  0% { filter: brightness(2.2); }
+  100% { filter: brightness(1); }
 }
 
 /* ---------- podium (final results) ---------- */
@@ -515,7 +577,19 @@ input {
 .podium-place.third { order: 3; }
 
 .podium-emoji {
-  font-size: 32px;
+  font-size: 40px;
+  display: inline-block;
+  animation: idle-bounce 1.8s ease-in-out infinite;
+}
+.podium-place.first .podium-emoji {
+  font-size: 60px;
+  animation: idle-bounce 1.2s ease-in-out infinite, winner-glow 1.4s ease-in-out infinite;
+}
+.podium-place.second .podium-emoji { animation-delay: 0.2s; }
+.podium-place.third .podium-emoji { animation-delay: 0.4s; }
+@keyframes winner-glow {
+  0%, 100% { filter: drop-shadow(0 0 0px var(--gold)); }
+  50% { filter: drop-shadow(0 0 14px var(--gold)); }
 }
 .podium-name {
   font-size: 14px;
@@ -911,6 +985,53 @@ input {
   border-radius: 4px;
   background: var(--lime);
   transition: width 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.3s ease;
+  animation: bar-flash-in 0.5s ease-out;
+}
+.firewall-fill.hit-flash {
+  animation: firewall-hit 0.5s ease-out;
+}
+@keyframes firewall-hit {
+  0% { filter: brightness(2.5) saturate(1.6); box-shadow: 0 0 10px rgba(255, 255, 255, 0.8); }
+  100% { filter: brightness(1); box-shadow: none; }
+}
+
+/* Searching-for-opponent radar pulse */
+.radar {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.radar-ring {
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--coral);
+  border-radius: 50%;
+  animation: radar-pulse 1.8s ease-out infinite;
+}
+.radar-icon {
+  font-size: 36px;
+  animation: idle-bounce 1.2s ease-in-out infinite;
+}
+@keyframes radar-pulse {
+  0% { transform: scale(0.4); opacity: 0.9; }
+  100% { transform: scale(1.3); opacity: 0; }
+}
+
+/* ---------- confetti (final results celebration) ---------- */
+
+.confetti-piece {
+  position: fixed;
+  top: 0;
+  pointer-events: none;
+  z-index: 200;
+  animation: confetti-fall linear forwards;
+}
+@keyframes confetti-fall {
+  0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(110vh) rotate(360deg); opacity: 0.9; }
 }
 
 /* Join screen: the VS header sitting above a duel question */
@@ -927,8 +1048,9 @@ input {
   text-align: center;
 }
 .duel-vs-emoji {
-  font-size: 28px;
-  display: block;
+  font-size: 40px;
+  display: inline-block;
+  animation: idle-bounce 1s ease-in-out infinite;
 }
 .duel-vs-name {
   font-size: 12px;
