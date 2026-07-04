@@ -129,7 +129,11 @@ player moves through the quiz on their own, in their own random order, at
 their own speed, and the host screen is just a live-updating leaderboard.
 
 - The host generates a 5-character join code and opens a Supabase Realtime
-  channel named `quiz-<CODE>`.
+  channel named `quiz-<CODE>`. The lobby also shows a QR code (generated
+  entirely client-side via the `qrcode` library, loaded from a CDN — no
+  server involved) encoding a direct link like `/join.html?code=ABCDE`.
+  Scanning it pre-fills the code on the join form, so students just need
+  to add a name and pick a character.
 - Players "join" by connecting to that same channel and calling
   `track()` with their name + emoji (Presence) — this is how the host
   sees the live roster in the lobby, with zero database writes.
@@ -168,6 +172,20 @@ The host picks a mode on the "Pick a quiz" screen, before generating the
 join code. All three modes share the same quiz bank and the same
 host-as-relay architecture above — only the round logic differs.
 
+### Visual feel
+
+The whole app leans into big, bouncy, arcade energy rather than a flat
+quiz form: emoji characters idle-bounce everywhere (lobby, leaderboard,
+podium, duels), correct/wrong answers punch in with a scale-pop, a color
+flash across the screen, and (for wrong answers) a shake — and the final
+podium fires off a confetti burst. None of this needs image assets or a
+build step; it's all CSS keyframes plus a couple of small DOM hooks
+(`launchConfetti()` in `js/utils.js`). If it still doesn't feel exciting
+enough once real students are on it, the next lever up would be actual
+illustrated character art (bigger investment — needs generated/commissioned
+images, a place to host them, and swapping emoji for `<img>` sprites
+throughout).
+
 **🧠 Classic Quiz** — every player answers all the quiz's questions, once
 each, in their own shuffled order, at their own pace. Score is the
 Kahoot-style speed bonus described below.
@@ -183,14 +201,20 @@ still gets a defined end point rather than waiting on stragglers.
 
 **🔥 Firewall Duel** — the host continuously pairs up waiting players into
 1-on-1 duels. Both players in a duel get the *same* random question at
-the same time; whoever answers correctly and faster deals damage to the
-other's firewall (both correct → the faster one lands the hit; both
-wrong → nothing happens). A firewall broken down to 0% instantly reboots
-to 100%, and the opponent banks a win. Both players immediately requeue
-for a fresh opponent — nobody sits out. The leaderboard ranks by wins,
-tie-broken by total breaches dealt. Damage-per-hit uses the same
+the same time, but with a fixed **8-second** timer regardless of what the
+quiz's own questions are set to — duels are meant to feel like a fast
+reflex showdown, not a full-length quiz question, and a short timer also
+means duels resolve (and players requeue into a fresh one) quickly rather
+than everyone waiting around. Whoever answers correctly and faster deals
+damage to the other's firewall (both correct → the faster one lands the
+hit; both wrong → nothing happens). A firewall broken down to 0% instantly
+reboots to 100%, and the opponent banks a win. Both players immediately
+requeue for a fresh opponent — nobody sits out. The leaderboard ranks by
+wins, tie-broken by total breaches dealt. Damage-per-hit uses the same
 speed-decay shape as classic scoring, just rescaled (`calculateDuelDamage`
 in `js/scoring.js`) so a firewall takes roughly 3–5 solid hits to break.
+The 8-second cap lives in `DUEL_TIME_LIMIT_SECONDS` near the top of the
+Firewall Duel section in `js/host.js` if you want to tune it.
 
 ### Scoring (v1)
 
