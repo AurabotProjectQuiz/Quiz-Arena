@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient.js';
-import { calculateScore, rankPlayers, calculateDuelDamage } from './scoring.js';
+import { calculateScore, rankPlayers, calculateDuelDamage, calculateSpeedFraction, OUTBREAK_CHAIN_BONUS } from './scoring.js';
 import { generateJoinCode, escapeHtml, shuffle, launchConfetti, $ } from './utils.js';
 import { requireRole } from './authGuard.js';
 import { BOARD_SIZE, ESCALATORS, EELS } from './boardConfig.js';
@@ -17,19 +17,21 @@ let players = {};           // playerId -> { id, name, emoji, score, answered, .
 
 // ------------------------------------------------------------
 // Game mode — 'classic' (existing quiz), 'board' (Eels & Escalators),
-// or 'duel' (Firewall Duel)
+// 'duel' (Firewall Duel), or 'outbreak' (Antivirus Grid)
 // ------------------------------------------------------------
 let gameMode = 'classic';
 
 $('#mode-classic').addEventListener('click', () => setGameMode('classic'));
 $('#mode-board').addEventListener('click', () => setGameMode('board'));
 $('#mode-duel').addEventListener('click', () => setGameMode('duel'));
+$('#mode-outbreak').addEventListener('click', () => setGameMode('outbreak'));
 
 function setGameMode(mode) {
   gameMode = mode;
   $('#mode-classic').classList.toggle('selected', mode === 'classic');
   $('#mode-board').classList.toggle('selected', mode === 'board');
   $('#mode-duel').classList.toggle('selected', mode === 'duel');
+  $('#mode-outbreak').classList.toggle('selected', mode === 'outbreak');
 }
 
 // Eels & Escalators — board-mode-only state
@@ -46,6 +48,11 @@ let duelCounter = 0;
 // quiz question — cap the timer regardless of what the quiz itself has
 // each question set to, so matches resolve (and requeue) quickly.
 const DUEL_TIME_LIMIT_SECONDS = 8;
+
+// Outbreak: Antivirus Grid — outbreak-mode-only state
+const OUTBREAK_GRID_SIZE = 8; // 8x8 = 64 nodes
+let outbreakGrid = [];        // flat array of { ownerId: string|null, claimSpeedFraction: number }
+const OUTBREAK_COLORS = ['#7c5cfc', '#c8ff4d', '#ff6f59', '#4dd8ff', '#ffd166', '#ff5c7a', '#38bdf8', '#f472b6'];
 
 const screens = ['pick', 'lobby', 'live', 'final'];
 function showScreen(name) {
@@ -137,7 +144,10 @@ async function createGameSession() {
       $('#join-code-display').textContent = code;
       $('#lobby-quiz-title').textContent = `${quiz.title} · ${quiz.topic}`;
       $('#lobby-mode-label').textContent =
-        gameMode === 'board' ? '🐍🛗 Eels & Escalators' : gameMode === 'duel' ? '🔥 Firewall Duel' : '🧠 Classic Quiz';
+        gameMode === 'board' ? '🐍🛗 Eels & Escalators'
+        : gameMode === 'duel' ? '🔥 Firewall Duel'
+        : gameMode === 'outbreak' ? '🦠 Outbreak: Antivirus Grid'
+        : '🧠 Classic Quiz';
       renderJoinQrCode(code);
       showScreen('lobby');
     } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
@@ -190,6 +200,9 @@ function syncPlayersFromPresence() {
         wins: 0,
         breachesDealt: 0,
         duelOpponentId: null,
+        // Outbreak fields — unused in classic/board/duel modes
+        nodesOwned: 0,
+        outbreakColor: null,
       };
     }
   }
@@ -240,6 +253,8 @@ function addDemoPlayers(count = 6) {
       wins: 0,
       breachesDealt: 0,
       duelOpponentId: null,
+      nodesOwned: 0,
+      outbreakColor: null,
     };
   });
   renderRoster();
@@ -303,6 +318,7 @@ $('#btn-start-game').addEventListener('click', startGame);
 function startGame() {
   if (gameMode === 'board') return startBoardGame();
   if (gameMode === 'duel') return startDuelGame();
+  if (gameMode === 'outbreak') return startOutbreakGame();
 
   // Send every player the full question set (no correct answers) in one
   // message. Each player shuffles it into their own order client-side and
@@ -319,6 +335,7 @@ function startGame() {
   $('#leaderboard').hidden = false;
   $('#board-view').hidden = true;
   $('#duel-view').hidden = true;
+  $('#outbreak-view').hidden = true;
 
   channel.send({ type: 'broadcast', event: 'game_start', payload: { mode: 'classic', questions: sanitized } });
 
@@ -359,6 +376,7 @@ function startBoardGame() {
   $('#leaderboard').hidden = true;
   $('#board-view').hidden = false;
   $('#duel-view').hidden = true;
+  $('#outbreak-view').hidden = true;
 
   channel.send({ type: 'broadcast', event: 'game_start', payload: { mode: 'board', questions: sanitized } });
 
@@ -391,6 +409,7 @@ function startDuelGame() {
   $('#leaderboard').hidden = false;
   $('#board-view').hidden = true;
   $('#duel-view').hidden = false;
+  $('#outbreak-view').hidden = true;
   $('#total-count').textContent = Object.keys(players).length;
   $('#finished-count').textContent = '0';
 
@@ -475,6 +494,7 @@ function tryMatchmaking() {
 function handleAnswer(payload) {
   if (gameMode === 'board') return handleBoardAnswer(payload);
   if (gameMode === 'duel') return handleDuelAnswer(payload);
+  if (gameMode === 'outbreak') return handleOutbreakAnswer(payload);
 
   const { playerId, questionId, optionId, timeTakenMs } = payload;
   const player = players[playerId];
@@ -648,6 +668,194 @@ function rankDuelPlayers(list) {
     }
     return { id: p.id, name: p.name, emoji: p.emoji, score: p.wins, place };
   });
+}
+
+// ------------------------------------------------------------
+// Outbreak: Antivirus Grid — game start. Every player answers their own
+// shuffled question queue independently (same async pacing as classic
+// mode — students don't need to see the grid at all, only the host
+// screen does). A correct answer claims a node on the shared grid
+// instead of just adding to an abstract score.
+// ------------------------------------------------------------
+function startOutbreakGame() {
+  outbreakGrid = Array.from({ length: OUTBREAK_GRID_SIZE * OUTBREAK_GRID_SIZE }, () => ({
+    ownerId: null,
+    claimSpeedFraction: 0,
+  }));
+
+  const sanitized = questions.map((q) => ({
+    id: q.id,
+    text: q.question_text,
+    options: q.options,
+    timeLimitSeconds: q.time_limit_seconds,
+  }));
+
+  Object.values(players).forEach((p, i) => {
+    p.score = 0;
+    p.answered = 0;
+    p.nodesOwned = 0;
+    p.outbreakColor = OUTBREAK_COLORS[i % OUTBREAK_COLORS.length];
+  });
+
+  $('#live-heading').textContent = '🦠 Outbreak: Antivirus Grid';
+  $('#leaderboard').hidden = false;
+  $('#board-view').hidden = true;
+  $('#duel-view').hidden = true;
+  $('#outbreak-view').hidden = false;
+  $('#total-count').textContent = Object.keys(players).length;
+  $('#finished-count').textContent = '0';
+
+  channel.send({ type: 'broadcast', event: 'game_start', payload: { mode: 'outbreak', questions: sanitized } });
+
+  renderLeaderboard(rankPlayers(Object.values(players)), '#leaderboard');
+  renderOutbreakLegend();
+  renderOutbreakGrid();
+  showScreen('live');
+
+  startDemoAnswering(); // demo hook — delete this line to remove pretend-host mode
+}
+
+function outbreakNeighbors(index) {
+  const row = Math.floor(index / OUTBREAK_GRID_SIZE);
+  const col = index % OUTBREAK_GRID_SIZE;
+  const neighbors = [];
+  if (row > 0) neighbors.push(index - OUTBREAK_GRID_SIZE);
+  if (row < OUTBREAK_GRID_SIZE - 1) neighbors.push(index + OUTBREAK_GRID_SIZE);
+  if (col > 0) neighbors.push(index - 1);
+  if (col < OUTBREAK_GRID_SIZE - 1) neighbors.push(index + 1);
+  return neighbors;
+}
+
+// Picks which node a correct answer targets: prefer growing your own
+// territory (unclaimed node next to one you own — sets up chain bonuses),
+// then any unclaimed node, then an enemy node on your border (a steal
+// attempt), then any enemy node at all. Returns null only once this
+// player already owns literally every node.
+function pickOutbreakTarget(playerId) {
+  const owned = [];
+  const unclaimedAny = [];
+  const enemyAny = [];
+  outbreakGrid.forEach((cell, i) => {
+    if (cell.ownerId === playerId) owned.push(i);
+    else if (cell.ownerId === null) unclaimedAny.push(i);
+    else enemyAny.push(i);
+  });
+
+  const unclaimedAdjacent = new Set();
+  const enemyAdjacent = new Set();
+  for (const idx of owned) {
+    for (const n of outbreakNeighbors(idx)) {
+      if (outbreakGrid[n].ownerId === null) unclaimedAdjacent.add(n);
+      else if (outbreakGrid[n].ownerId !== playerId) enemyAdjacent.add(n);
+    }
+  }
+
+  if (unclaimedAdjacent.size > 0) return [...unclaimedAdjacent][Math.floor(Math.random() * unclaimedAdjacent.size)];
+  if (unclaimedAny.length > 0) return unclaimedAny[Math.floor(Math.random() * unclaimedAny.length)];
+  if (enemyAdjacent.size > 0) return [...enemyAdjacent][Math.floor(Math.random() * enemyAdjacent.size)];
+  if (enemyAny.length > 0) return enemyAny[Math.floor(Math.random() * enemyAny.length)];
+  return null;
+}
+
+function handleOutbreakAnswer(payload) {
+  const { playerId, questionId, optionId, timeTakenMs } = payload;
+  const player = players[playerId];
+  const question = questionsById[questionId];
+  if (!player || !question) return;
+
+  const isCorrect = optionId != null && optionId === question.correct_option_id;
+  const basePoints = calculateScore(isCorrect, timeTakenMs, question.time_limit_seconds);
+  player.answered += 1;
+
+  let claimResult = null;
+  let totalPoints = 0;
+  let changedIndex = null;
+
+  if (!isCorrect) {
+    claimResult = { type: 'wrong' };
+  } else {
+    const target = pickOutbreakTarget(playerId);
+    if (target === null) {
+      totalPoints = basePoints;
+      claimResult = { type: 'board_full' };
+    } else {
+      const cell = outbreakGrid[target];
+      const speedFraction = calculateSpeedFraction(timeTakenMs, question.time_limit_seconds);
+
+      if (cell.ownerId === null) {
+        cell.ownerId = playerId;
+        cell.claimSpeedFraction = speedFraction;
+        changedIndex = target;
+        const chainCount = outbreakNeighbors(target).filter((n) => outbreakGrid[n].ownerId === playerId).length;
+        totalPoints = basePoints + chainCount * OUTBREAK_CHAIN_BONUS;
+        player.score += totalPoints;
+        player.nodesOwned += 1;
+        claimResult = { type: 'claimed', chainCount };
+      } else if (speedFraction > cell.claimSpeedFraction) {
+        // Steal succeeds — answered faster than whoever holds this node.
+        const previousOwner = players[cell.ownerId];
+        if (previousOwner) previousOwner.nodesOwned = Math.max(0, previousOwner.nodesOwned - 1);
+        cell.ownerId = playerId;
+        cell.claimSpeedFraction = speedFraction;
+        changedIndex = target;
+        const chainCount = outbreakNeighbors(target).filter((n) => outbreakGrid[n].ownerId === playerId).length;
+        totalPoints = basePoints + chainCount * OUTBREAK_CHAIN_BONUS;
+        player.score += totalPoints;
+        player.nodesOwned += 1;
+        claimResult = { type: 'flipped', chainCount };
+      } else {
+        // Steal fails — still correct, still scores the base points, but
+        // the node holds.
+        totalPoints = basePoints;
+        player.score += totalPoints;
+        claimResult = { type: 'steal_failed' };
+      }
+    }
+  }
+
+  channel.send({
+    type: 'broadcast',
+    event: 'answer_result',
+    payload: {
+      playerId,
+      questionId,
+      correct: isCorrect,
+      points: totalPoints,
+      totalScore: player.score,
+      claimResult,
+    },
+  });
+
+  renderLeaderboard(rankPlayers(Object.values(players)), '#leaderboard');
+  renderOutbreakGrid(changedIndex);
+  updateFinishedCount();
+}
+
+function renderOutbreakLegend() {
+  const el = $('#outbreak-legend');
+  el.innerHTML = Object.values(players)
+    .map(
+      (p) => `
+        <div class="outbreak-legend-chip">
+          <span class="outbreak-legend-swatch" style="background:${p.outbreakColor}"></span>
+          <span>${p.emoji} ${escapeHtml(p.name)}</span>
+        </div>
+      `
+    )
+    .join('');
+}
+
+function renderOutbreakGrid(justChangedIndex = null) {
+  const el = $('#outbreak-grid');
+  el.innerHTML = outbreakGrid
+    .map((cell, i) => {
+      if (cell.ownerId === null) return `<div class="outbreak-cell"></div>`;
+      const owner = players[cell.ownerId];
+      if (!owner) return `<div class="outbreak-cell"></div>`;
+      const cls = i === justChangedIndex ? 'outbreak-cell claimed just-claimed' : 'outbreak-cell claimed';
+      return `<div class="${cls}" style="background:${owner.outbreakColor}22;border-color:${owner.outbreakColor};" title="${escapeHtml(owner.name)}">${owner.emoji}</div>`;
+    })
+    .join('');
 }
 
 // ------------------------------------------------------------
@@ -862,6 +1070,7 @@ function endGame() {
   }
   activeDuels = {};
   duelQueue = [];
+  outbreakGrid = [];
 
   const leaderboard =
     gameMode === 'board' ? rankBoardPlayers(Object.values(players))
@@ -915,6 +1124,11 @@ function renderLeaderboard(leaderboard, targetSelector) {
         const firewall = players[p.id]?.firewall ?? 100;
         const breaches = players[p.id]?.breachesDealt ?? 0;
         suffix = `🛡️ ${firewall}% · ${breaches} breaches`;
+        barFraction = p.score / maxScore;
+      } else if (gameMode === 'outbreak') {
+        const nodes = players[p.id]?.nodesOwned ?? 0;
+        const totalNodes = OUTBREAK_GRID_SIZE * OUTBREAK_GRID_SIZE;
+        suffix = `🗺️ ${nodes}/${totalNodes} nodes`;
         barFraction = p.score / maxScore;
       } else {
         const answered = players[p.id]?.answered ?? 0;

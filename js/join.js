@@ -340,6 +340,41 @@ function onAnswerResult(payload) {
     return;
   }
 
+  if (gameMode === 'outbreak') {
+    myScore = payload.totalScore;
+    const banner = $('#reveal-banner');
+    const cr = payload.claimResult;
+    let positiveFlash = payload.correct;
+
+    if (!payload.correct) {
+      banner.textContent = 'Not quite ❌';
+      banner.className = 'reveal-banner incorrect';
+      $('#points-earned').textContent = '+0 points';
+    } else if (cr?.type === 'claimed') {
+      banner.textContent = cr.chainCount > 0 ? `Node claimed! Chain x${cr.chainCount} 🔗` : 'Node claimed! 🦠';
+      banner.className = 'reveal-banner correct';
+      $('#points-earned').textContent = `+${payload.points} points`;
+    } else if (cr?.type === 'flipped') {
+      banner.textContent = 'Rival node flipped! 💥';
+      banner.className = 'reveal-banner correct';
+      $('#points-earned').textContent = `+${payload.points} points`;
+    } else if (cr?.type === 'steal_failed') {
+      banner.textContent = 'Correct — but the hack was repelled 🛡️';
+      banner.className = 'reveal-banner correct';
+      $('#points-earned').textContent = `+${payload.points} points`;
+    } else {
+      banner.textContent = 'Correct! ✅';
+      banner.className = 'reveal-banner correct';
+      $('#points-earned').textContent = `+${payload.points} points`;
+    }
+    $('#my-total-score').textContent = myScore;
+
+    flashRevealScreen(positiveFlash);
+    showScreen('reveal');
+    setTimeout(() => showNextQuestion(), 1400);
+    return;
+  }
+
   myScore = payload.totalScore;
 
   const banner = $('#reveal-banner');

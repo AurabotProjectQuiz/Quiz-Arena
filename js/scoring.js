@@ -9,6 +9,18 @@ export const MAX_POINTS = 1000;
 export const MIN_POINTS = 500;
 
 /**
+ * Shared by every mode that needs "how fast was this answer" as a
+ * 0–1 value: 1 = instant, 0 = right at the buzzer.
+ * @param {number} timeTakenMs
+ * @param {number} timeLimitSeconds
+ */
+export function calculateSpeedFraction(timeTakenMs, timeLimitSeconds) {
+  const timeLimitMs = timeLimitSeconds * 1000;
+  const clampedMs = Math.min(Math.max(timeTakenMs, 0), timeLimitMs);
+  return 1 - clampedMs / timeLimitMs;
+}
+
+/**
  * @param {boolean} isCorrect - whether the chosen option was correct
  * @param {number} timeTakenMs - time from question shown to answer submitted
  * @param {number} timeLimitSeconds - the question's time limit
@@ -16,11 +28,7 @@ export const MIN_POINTS = 500;
  */
 export function calculateScore(isCorrect, timeTakenMs, timeLimitSeconds) {
   if (!isCorrect) return 0;
-
-  const timeLimitMs = timeLimitSeconds * 1000;
-  const clampedMs = Math.min(Math.max(timeTakenMs, 0), timeLimitMs);
-  const speedFraction = 1 - clampedMs / timeLimitMs; // 1 = instant, 0 = right at the buzzer
-
+  const speedFraction = calculateSpeedFraction(timeTakenMs, timeLimitSeconds);
   return Math.round(MIN_POINTS + (MAX_POINTS - MIN_POINTS) * speedFraction);
 }
 
@@ -38,11 +46,15 @@ export const MIN_DUEL_DAMAGE = 15;
  * @returns {number} damage dealt (integer)
  */
 export function calculateDuelDamage(timeTakenMs, timeLimitSeconds) {
-  const timeLimitMs = timeLimitSeconds * 1000;
-  const clampedMs = Math.min(Math.max(timeTakenMs, 0), timeLimitMs);
-  const speedFraction = 1 - clampedMs / timeLimitMs;
+  const speedFraction = calculateSpeedFraction(timeTakenMs, timeLimitSeconds);
   return Math.round(MIN_DUEL_DAMAGE + (MAX_DUEL_DAMAGE - MIN_DUEL_DAMAGE) * speedFraction);
 }
+
+// ============================================================
+// Outbreak: Antivirus Grid — bonus points per same-owner neighbor when
+// a claim "chains" onto your existing territory.
+// ============================================================
+export const OUTBREAK_CHAIN_BONUS = 60;
 
 /**
  * Sorts players by score descending and attaches a `place` (1-indexed),
