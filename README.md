@@ -216,6 +216,23 @@ in `js/scoring.js`) so a firewall takes roughly 3–5 solid hits to break.
 The 8-second cap lives in `DUEL_TIME_LIMIT_SECONDS` near the top of the
 Firewall Duel section in `js/host.js` if you want to tune it.
 
+**🦠 Outbreak: Antivirus Grid** — one shared 8×8 grid (64 nodes) lives on
+the host screen only — students don't need to see it, they just answer
+their own shuffled questions independently, exactly like Classic Quiz.
+A correct answer claims a node: it prefers an unclaimed node **next to
+territory you already own** (so you naturally grow connected blobs), and
+only falls back to a random unclaimed node, then an enemy node, if
+there's nothing left nearby. Claiming a node next to your own existing
+nodes pays a **chain bonus** (`OUTBREAK_CHAIN_BONUS` in `js/scoring.js`,
+per connected same-owner neighbor). Once the grid fills up, a correct
+answer can **flip** an enemy node instead — but only if you answered
+faster than whoever originally claimed it (a genuine speed comparison
+stored per-node, not a coin flip). A failed steal attempt still scores
+the normal base points for getting the question right; it just doesn't
+take the node. The leaderboard ranks by total points, same as classic
+scoring underneath — the grid is what makes the same scoring feel like
+territory conquest instead of an abstract number going up.
+
 ### Scoring (v1)
 
 Speed bonus, defined in `js/scoring.js`:
@@ -278,11 +295,11 @@ in the lobby.
 
 ## What's next (per your roadmap)
 
-- **More game modes.** Firewall Duel (🔥) is built; four other concepts
-  were pitched alongside it and are still on the table if you want more
-  variety later: a shared competitive map ("Outbreak: Antivirus Grid"), a
-  fully cooperative class-vs-boss mode ("Meteor Storm"), team-based play
-  with bankable gadgets ("Heist Crew"), and a space-race skin reusing the
+- **More game modes.** Firewall Duel (🔥) and Outbreak: Antivirus Grid
+  (🦠) are built; three other concepts were pitched alongside them and are
+  still on the table if you want more variety later: a fully cooperative
+  class-vs-boss mode ("Meteor Storm"), team-based play with bankable
+  gadgets ("Heist Crew"), and a space-race skin reusing the
   Eels & Escalators board engine ("Rocket Race"). Each new mode follows
   the same recipe: a `mode-<name>` tab, mode-only state alongside the
   existing `board`/`duel` state blocks in `host.js`, a `start<Name>Game()`
