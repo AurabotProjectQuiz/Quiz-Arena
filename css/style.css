@@ -855,11 +855,13 @@ input {
 
 .mode-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 16px;
 }
 .mode-tab {
   flex: 1;
+  min-width: 100px;
   padding: 12px 10px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
@@ -968,6 +970,65 @@ input {
   .cell-num { font-size: 7px; }
   .cell-feature { font-size: 8px; }
   .board-token { font-size: 10px; }
+}
+
+/* ---------- Outbreak: Antivirus Grid ---------- */
+
+.outbreak-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 3px;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+}
+.outbreak-cell {
+  aspect-ratio: 1;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  position: relative;
+  overflow: hidden;
+}
+.outbreak-cell.claimed {
+  border-style: solid;
+}
+.outbreak-cell.just-claimed {
+  animation: claim-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes claim-pop {
+  0% { transform: scale(0.5); filter: brightness(2); }
+  60% { transform: scale(1.15); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+
+.outbreak-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  width: 100%;
+  max-width: 560px;
+}
+.outbreak-legend-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 12px 6px 8px;
+  font-size: 12px;
+}
+.outbreak-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 /* ---------- Firewall Duel ---------- */
