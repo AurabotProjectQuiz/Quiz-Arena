@@ -169,8 +169,13 @@ the same way `answer_result` already is.
 ## Game modes
 
 The host picks a mode on the "Pick a quiz" screen, before generating the
-join code. All three modes share the same quiz bank and the same
+join code. All five modes share the same quiz bank and the same
 host-as-relay architecture above — only the round logic differs.
+
+Right when a game starts, every player sees a quick **"How to play"**
+screen for their mode (`MODE_RULES` in `js/join.js`) before the first
+question appears — a "Let's go!" button dismisses it early, or it
+auto-continues after 8 seconds so nobody gets stuck waiting on it.
 
 ### Visual feel
 
@@ -231,7 +236,54 @@ stored per-node, not a coin flip). A failed steal attempt still scores
 the normal base points for getting the question right; it just doesn't
 take the node. The leaderboard ranks by total points, same as classic
 scoring underneath — the grid is what makes the same scoring feel like
-territory conquest instead of an abstract number going up.
+territory conquest instead of an abstract number going up. Since students
+don't see the grid live, every 5th question they answer triggers a
+5-second **board update** on their own screen — a snapshot of the current
+grid, sent as part of that answer's own result message rather than a
+separate broadcast (`gridSnapshot` in `handleOutbreakAnswer`, `js/host.js`).
+
+**☄️ Asteroid Defense** — unlike every other mode, this one is entirely
+**personal**: each student has their own private mini-game running on
+their own device, and the host doesn't simulate any of it — it only runs
+the normal quiz pipeline (money instead of points) and shows a
+leaderboard of wave reached / asteroids destroyed, updated whenever a
+student's device reports in. The loop: answer 5 questions (faster
+correct answers earn more money) → a 5-second shop to buy or upgrade
+weapons → a 10-second wave where asteroids approach a world in the
+center and your weapons (fixed to the sphere's surface) auto-fire at
+anything in range and in their arc as you **drag to rotate the world**
+and bring them to bear. If an asteroid reaches the world, scoring is
+suspended for the rest of that wave (per the original spec: "you can't
+gain any more points"), though the game keeps running visually. Then
+back to 5 more questions, forever escalating (faster spawns, faster
+asteroids, more asteroid HP) until the host ends the game — there's no
+natural "finish," matching the endless-wave-survival feel.
+
+Weapons: **Blaster** ($50, 1 shot/sec), **Machine Gun** ($150, ~4
+shots/sec), **Laser** ($250, 2 shots/sec, longer reach) all need you to
+rotate the world so they're pointed at an incoming asteroid; the
+**Rocket Launcher** ($400, fires every 2s) is laser-*guided* — it
+auto-tracks any asteroid in range regardless of aim, at the cost of a
+slow fire rate. Each weapon upgrades up to level 3 (more damage, faster
+fire). All the numbers (costs, fire rates, difficulty scaling per wave)
+live in `js/asteroidsGame.js`, in one place, specifically so they're easy
+to retune after playtesting.
+
+This one is a real physics-lite mini-game (rotation input, projectile
+travel, collision, difficulty curves) built without being able to
+visually test animation feel — **it will almost certainly need some
+tuning once real students are dragging it around on real phones**
+(rotation sensitivity, spawn pacing, weapon balance). `ROTATION_SENSITIVITY`
+near the top of `js/asteroidsGame.js` is the first thing to adjust if
+rotating feels too twitchy or too sluggish.
+
+One limitation worth knowing: the 🎭 Pretend Host demo bots will still
+correctly earn money by "answering" questions, since that part runs
+through the normal host pipeline — but they can't play the actual
+asteroid mini-game (there's no real browser tab for a bot), so their
+wave/asteroids-destroyed stats on the host leaderboard will just stay at
+0. To actually test the mini-game itself, play through `/join.html`
+yourself in a real browser tab.
 
 ### Scoring (v1)
 
@@ -295,15 +347,15 @@ in the lobby.
 
 ## What's next (per your roadmap)
 
-- **More game modes.** Firewall Duel (🔥) and Outbreak: Antivirus Grid
-  (🦠) are built; three other concepts were pitched alongside them and are
-  still on the table if you want more variety later: a fully cooperative
-  class-vs-boss mode ("Meteor Storm"), team-based play with bankable
-  gadgets ("Heist Crew"), and a space-race skin reusing the
-  Eels & Escalators board engine ("Rocket Race"). Each new mode follows
-  the same recipe: a `mode-<name>` tab, mode-only state alongside the
-  existing `board`/`duel` state blocks in `host.js`, a `start<Name>Game()`
-  dispatched from `startGame()`, a `handle<Name>Answer()` dispatched from
+- **More game modes.** Firewall Duel (🔥), Outbreak: Antivirus Grid (🦠),
+  and Asteroid Defense (☄️) are built; two other concepts were pitched
+  alongside them and are still on the table if you want more variety
+  later: a fully cooperative class-vs-boss mode ("Meteor Storm") and
+  team-based play with bankable gadgets ("Heist Crew"). Each new mode
+  follows the same recipe: a `mode-<name>` tab, mode-only state alongside
+  the existing `board`/`duel`/`outbreak` state blocks in `host.js`, a
+  `start<Name>Game()` dispatched from `startGame()`, a
+  `handle<Name>Answer()` dispatched from
   `handleAnswer()`, and matching screens/handlers in `join.js`.
 - **Persisting final results** to a `game_results` table (optional, only
   written once at game end — still cheap) so you can review past games.

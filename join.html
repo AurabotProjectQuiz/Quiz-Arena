@@ -39,6 +39,18 @@
     <p class="center-text">Waiting for the host to start the game…</p>
   </section>
 
+  <!-- STEP 2b: how to play, shown right when the game starts -->
+  <section id="screen-rules" class="screen" hidden>
+    <span class="eyebrow">How to play</span>
+    <h2 class="display" style="font-size:24px;" id="rules-title"></h2>
+    <div class="card" style="max-width:380px;">
+      <ul class="rules-list" id="rules-body"></ul>
+    </div>
+    <button class="btn btn--lime" id="btn-rules-continue" style="max-width:280px;">
+      Let's go!
+    </button>
+  </section>
+
   <!-- STEP 3: live question — each player works through their own shuffled order -->
   <section id="screen-question" class="screen" hidden>
     <div id="duel-header" class="duel-vs-header" hidden>
@@ -106,6 +118,42 @@
     </div>
   </section>
 
+  <!-- STEP 4c: Outbreak mode — periodic board update snapshot -->
+  <section id="screen-board-update" class="screen screen--top" hidden>
+    <span class="eyebrow">🦠 Board update!</span>
+    <h2 class="display" style="font-size:20px;">Here's how the grid looks right now</h2>
+    <div class="outbreak-legend" id="snapshot-legend"></div>
+    <div class="outbreak-grid" id="snapshot-grid"></div>
+  </section>
+
+  <!-- STEP 4d: Asteroid Defense — shop between waves -->
+  <section id="screen-asteroids-shop" class="screen screen--top" hidden>
+    <span class="eyebrow" id="shop-wave-label">Wave 1 incoming…</span>
+    <div class="shop-timer" id="shop-timer">5</div>
+    <div class="ast-hud" style="justify-content:center;">
+      <span class="money" id="shop-money">$0</span>
+    </div>
+    <div class="shop-weapon-list" id="shop-buy-list"></div>
+    <span class="eyebrow" style="margin-top:6px;">Your weapons</span>
+    <div class="shop-owned-list" id="shop-owned-list"></div>
+  </section>
+
+  <!-- STEP 4e: Asteroid Defense — the actual mini-game -->
+  <section id="screen-asteroids-defense" class="screen screen--top" hidden>
+    <div class="ast-hud">
+      <span id="defense-wave-label">Wave 1</span>
+      <span class="destroyed">💥 <span id="defense-destroyed-count">0</span></span>
+      <span id="defense-timer">10</span>
+    </div>
+    <p class="ast-shields-down-banner" id="defense-shields-banner" hidden>
+      🛡️ Shields down! No more points until the next wave.
+    </p>
+    <div id="asteroids-arena-container"></div>
+    <p class="center-text" style="color:var(--text-faint);font-size:12px;">
+      Drag anywhere on the world to rotate it!
+    </p>
+  </section>
+
   <!-- STEP 5: this player has answered every question -->
   <section id="screen-done" class="screen" hidden>
     <span class="eyebrow">All done!</span>
@@ -124,6 +172,7 @@
     <a href="/join.html" class="btn btn--ghost" style="max-width:280px;text-decoration:none;text-align:center;">
       Join another game
     </a>
+    <a href="/index.html" class="muted-link">&larr; back to main menu</a>
   </section>
 
   <script type="module" src="/js/join.js"></script>
