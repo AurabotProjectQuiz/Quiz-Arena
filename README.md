@@ -260,22 +260,30 @@ asteroids, more asteroid HP) until the host ends the game — there's no
 natural "finish," matching the endless-wave-survival feel.
 
 Weapons: **Blaster** ($50, 1 shot/sec), **Machine Gun** ($150, ~4
-shots/sec), **Laser** ($250, 2 shots/sec, longer reach) all need you to
-rotate the world so they're pointed at an incoming asteroid; the
-**Rocket Launcher** ($400, fires every 2s) is laser-*guided* — it
-auto-tracks any asteroid in range regardless of aim, at the cost of a
-slow fire rate. Each weapon upgrades up to level 3 (more damage, faster
-fire). All the numbers (costs, fire rates, difficulty scaling per wave)
-live in `js/asteroidsGame.js`, in one place, specifically so they're easy
-to retune after playtesting.
+shots/sec), **Laser** ($250, 2 shots/sec, longer reach) all need to be
+pointed **straight** at an incoming asteroid — their firing arc is
+narrow on purpose (8–12°, `arcDegrees` per weapon in
+`js/asteroidsGame.js`), no shooting on the diagonal; the **Rocket
+Launcher** ($400, fires every 2s) is laser-*guided* — it auto-tracks any
+asteroid in range regardless of aim, at the cost of a slow fire rate.
+Each weapon upgrades up to level 3 (more damage, faster fire). All the
+numbers (costs, fire rates, difficulty scaling per wave) live in
+`js/asteroidsGame.js`, in one place, specifically so they're easy to
+retune after playtesting.
+
+Rotation control: hold down on the **left half** of the world to spin it
+counterclockwise, the **right half** to spin it clockwise — continuous
+for as long as it's held, at a fixed speed
+(`ROTATION_SPEED_DEG_PER_SEC`), rather than a drag gesture.
 
 This one is a real physics-lite mini-game (rotation input, projectile
 travel, collision, difficulty curves) built without being able to
 visually test animation feel — **it will almost certainly need some
-tuning once real students are dragging it around on real phones**
-(rotation sensitivity, spawn pacing, weapon balance). `ROTATION_SENSITIVITY`
-near the top of `js/asteroidsGame.js` is the first thing to adjust if
-rotating feels too twitchy or too sluggish.
+tuning once real students are playing it on real phones** (rotation
+speed, spawn pacing, weapon arc width, weapon balance).
+`ROTATION_SPEED_DEG_PER_SEC` and each weapon's `arcDegrees` near the top
+of `js/asteroidsGame.js` are the first things to adjust if rotating feels
+too slow/fast or aiming feels too strict/loose.
 
 One limitation worth knowing: the 🎭 Pretend Host demo bots will still
 correctly earn money by "answering" questions, since that part runs
