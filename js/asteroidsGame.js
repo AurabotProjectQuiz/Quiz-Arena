@@ -19,21 +19,21 @@ const WEAPON_RING_RADIUS = 70;
 const MAX_WEAPONS = 8;
 const MAX_WEAPON_LEVEL = 3;
 const MAX_CONCURRENT_ASTEROIDS = 14;
-const ROTATION_SENSITIVITY = 0.5; // degrees of rotation per pixel dragged
+const ROTATION_SPEED_DEG_PER_SEC = 110; // how fast the world spins while holding a side
 const ASTEROID_EMOJIS = ['☄️', '🪨', '☄️'];
 
 export const WEAPON_TYPES = {
   blaster: {
     key: 'blaster', name: 'Blaster', emoji: '🔫', cost: 50,
-    baseFireRateMs: 1000, baseDamage: 1, rangeFraction: 0.55, arcDegrees: 44, homing: false, projectileMs: 220,
+    baseFireRateMs: 1000, baseDamage: 1, rangeFraction: 0.55, arcDegrees: 10, homing: false, projectileMs: 220,
   },
   machinegun: {
     key: 'machinegun', name: 'Machine Gun', emoji: '⚙️', cost: 150,
-    baseFireRateMs: 260, baseDamage: 1, rangeFraction: 0.65, arcDegrees: 38, homing: false, projectileMs: 180,
+    baseFireRateMs: 260, baseDamage: 1, rangeFraction: 0.65, arcDegrees: 12, homing: false, projectileMs: 180,
   },
   laser: {
     key: 'laser', name: 'Laser', emoji: '🔴', cost: 250,
-    baseFireRateMs: 550, baseDamage: 2, rangeFraction: 0.8, arcDegrees: 32, homing: false, projectileMs: 90,
+    baseFireRateMs: 550, baseDamage: 2, rangeFraction: 0.8, arcDegrees: 8, homing: false, projectileMs: 90,
   },
   rocket: {
     key: 'rocket', name: 'Rocket Launcher', emoji: '🚀', cost: 400,
@@ -88,24 +88,29 @@ export function createAsteroidsGame(containerEl, callbacks = {}) {
   let lastFrameTime = 0;
   let rafHandle = null;
   let dragging = false;
-  let dragStartX = 0;
-  let dragStartRotation = 0;
+  let rotationDirection = 0; // -1 = counterclockwise (holding left side), +1 = clockwise (holding right side)
 
   // ---------------- rotation input ----------------
+  // Touch/hold the left half of the arena to spin counterclockwise,
+  // the right half to spin clockwise — continues for as long as it's
+  // held, at a fixed speed, rather than tracking a drag distance.
+  function directionFromEvent(e) {
+    const rect = arenaEl.getBoundingClientRect();
+    const midpointX = rect.left + rect.width / 2;
+    return e.clientX < midpointX ? -1 : 1;
+  }
   function onPointerDown(e) {
     dragging = true;
-    dragStartX = e.clientX;
-    dragStartRotation = worldRotationDeg;
+    rotationDirection = directionFromEvent(e);
     arenaEl.setPointerCapture(e.pointerId);
   }
   function onPointerMove(e) {
     if (!dragging) return;
-    const deltaX = e.clientX - dragStartX;
-    worldRotationDeg = (dragStartRotation + deltaX * ROTATION_SENSITIVITY + 360) % 360;
-    rotorEl.style.transform = `rotate(${worldRotationDeg}deg)`;
+    rotationDirection = directionFromEvent(e); // let them slide their finger to switch sides mid-hold
   }
   function onPointerUp() {
     dragging = false;
+    rotationDirection = 0;
   }
   arenaEl.addEventListener('pointerdown', onPointerDown);
   arenaEl.addEventListener('pointermove', onPointerMove);
@@ -241,6 +246,11 @@ export function createAsteroidsGame(containerEl, callbacks = {}) {
     if (!lastFrameTime) lastFrameTime = timestamp;
     const dt = Math.min(64, timestamp - lastFrameTime) / 1000;
     lastFrameTime = timestamp;
+
+    if (rotationDirection !== 0) {
+      worldRotationDeg = (worldRotationDeg + rotationDirection * ROTATION_SPEED_DEG_PER_SEC * dt + 360) % 360;
+      rotorEl.style.transform = `rotate(${worldRotationDeg}deg)`;
+    }
 
     if (waveActive) {
       spawnAccumulatorMs += dt * 1000;

@@ -203,7 +203,7 @@ const MODE_RULES = {
     body: [
       "Answer 5 questions to earn money — faster correct answers earn more!",
       "Then you'll get 5 seconds in the shop to buy or upgrade weapons.",
-      'Drag to rotate your world — weapons rotate with it, so aim them at incoming asteroids!',
+      'Hold the left side of your world to rotate left, the right side to rotate right — weapons rotate with it, so line them up straight with incoming asteroids!',
       'The Rocket Launcher auto-tracks targets, no aiming needed.',
       "If an asteroid hits your world, you can't score again until the wave ends.",
       'Asteroids get tougher and faster with every wave!',
