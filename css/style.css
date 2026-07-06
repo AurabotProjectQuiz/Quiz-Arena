@@ -1031,6 +1031,21 @@ input {
   flex-shrink: 0;
 }
 
+/* ---------- pre-game "how to play" rules screen ---------- */
+
+.rules-list {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.rules-list li {
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text);
+}
+
 /* ---------- Firewall Duel ---------- */
 
 .firewall-bar {
@@ -1183,5 +1198,212 @@ input {
   color: #14132b;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+/* ---------- Asteroid Defense ---------- */
+
+.ast-arena {
+  position: relative;
+  width: 300px;
+  height: 300px;
+  margin: 0 auto;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+.ast-arena:active {
+  cursor: grabbing;
+}
+
+.ast-rotor {
+  position: absolute;
+  inset: 0;
+  transition: transform 0.05s linear;
+}
+
+.ast-world-sphere {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #5b8cff, #1d3fae 70%, #142a7a);
+  box-shadow: 0 0 24px rgba(91, 140, 255, 0.5), inset -8px -8px 20px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+}
+
+.ast-weapon-slot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--lime);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.ast-asteroid {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  font-size: 28px;
+  pointer-events: none;
+  filter: drop-shadow(0 0 4px rgba(255, 111, 89, 0.6));
+}
+
+.ast-projectile {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--lime);
+  margin: -3px;
+  pointer-events: none;
+  box-shadow: 0 0 6px var(--lime);
+}
+.ast-projectile-rocket {
+  width: 10px;
+  height: 10px;
+  margin: -5px;
+  background: var(--coral);
+  box-shadow: 0 0 10px var(--coral);
+}
+.ast-projectile-laser {
+  background: var(--danger);
+  box-shadow: 0 0 8px var(--danger);
+}
+
+.ast-explosion {
+  position: absolute;
+  font-size: 26px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: ast-explosion-pop 0.4s ease-out forwards;
+}
+@keyframes ast-explosion-pop {
+  0% { transform: translate(-50%, -50%) scale(0.4); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1.6); opacity: 0; }
+}
+
+.ast-hud {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 300px;
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.ast-hud .money { color: var(--lime); }
+.ast-hud .destroyed { color: var(--coral); }
+
+.ast-shields-down-banner {
+  background: rgba(255, 92, 122, 0.15);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-display);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ---------- Asteroid Defense: shop ---------- */
+
+.shop-timer {
+  font-family: var(--font-display);
+  font-size: 32px;
+  color: var(--coral);
+}
+
+.shop-weapon-list {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.shop-weapon-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+}
+.shop-weapon-card .shop-emoji {
+  font-size: 26px;
+  flex-shrink: 0;
+}
+.shop-weapon-card .shop-info {
+  flex: 1;
+}
+.shop-weapon-card .shop-name {
+  font-family: var(--font-display);
+  font-size: 13px;
+  display: block;
+}
+.shop-weapon-card .shop-desc {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.shop-weapon-card .shop-buy-btn {
+  font-family: var(--font-display);
+  font-size: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--lime);
+  color: #14132b;
+  flex-shrink: 0;
+}
+.shop-weapon-card .shop-buy-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.shop-owned-list {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.shop-owned-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 13px;
+}
+.shop-owned-card .shop-upgrade-btn {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--violet);
+  color: white;
+  flex-shrink: 0;
+}
+.shop-owned-card .shop-upgrade-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
