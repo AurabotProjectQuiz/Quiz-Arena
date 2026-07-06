@@ -4,6 +4,12 @@
 // shop purchases); the host never simulates any of this, since each
 // student's world is private to them.
 //
+// Geometry is measured from the arena's actual rendered size at
+// creation time (not a fixed pixel guess) — the CSS makes `.ast-arena`
+// responsive (fills most of the available width, up to a cap), and
+// this reads that real size back so the game genuinely fills whatever
+// space it's given instead of being boxed into a small fixed square.
+//
 // Coordinate convention: everything is measured from the arena's
 // center. `polarToXY(angleDeg, radius)` follows the same convention as
 // the CSS `rotate(angleDeg) translateY(-radius)` trick used to position
@@ -11,15 +17,10 @@
 // positive degrees rotate clockwise.
 // ============================================================
 
-export const ARENA_SIZE = 330;
-const CENTER = ARENA_SIZE / 2;
-const OUTER_RADIUS = 156; // asteroids spawn here — close to the edge of the arena
-const INNER_RADIUS = 35; // world sphere radius — asteroids "hit" at this distance (smaller sphere = more approach room)
-const WEAPON_RING_RADIUS = 45;
 const MAX_WEAPONS = 8;
 const MAX_WEAPON_LEVEL = 3;
-const MAX_CONCURRENT_ASTEROIDS = 16;
-const ROTATION_SPEED_DEG_PER_SEC = 110; // how fast the world spins while holding a side
+const MAX_CONCURRENT_ASTEROIDS = 18;
+const ROTATION_SPEED_DEG_PER_SEC = 150; // how fast the world spins while holding a side
 const ASTEROID_EMOJIS = ['☄️', '🪨', '☄️'];
 
 export const WEAPON_TYPES = {
@@ -73,14 +74,23 @@ export function createAsteroidsGame(containerEl, callbacks = {}) {
   const arenaEl = containerEl.querySelector('#ast-arena');
   const rotorEl = containerEl.querySelector('#ast-rotor');
 
+  // Measure the actual rendered size (CSS sizes it responsively) so the
+  // game genuinely fills the space it's given, on any device, rather
+  // than being boxed into a fixed pixel guess that's wrong half the time.
+  const arenaSize = arenaEl.getBoundingClientRect().width || 330;
+  const CENTER = arenaSize / 2;
+  const OUTER_RADIUS = arenaSize * 0.48; // spawn ring, right at the edge of the arena
+  const INNER_RADIUS = arenaSize * 0.09; // world sphere — small, to maximize approach room
+  const WEAPON_RING_RADIUS = arenaSize * 0.12;
+
   let weapons = [];
   let asteroids = [];
   let worldRotationDeg = 0;
   let waveActive = false;
   let waveNumber = 1;
   let spawnAccumulatorMs = 0;
-  let spawnIntervalMs = 1000;
-  let asteroidSpeed = 42;
+  let spawnIntervalMs = 1200;
+  let asteroidSpeed = 30;
   let asteroidMaxHp = 1;
   let earthHitThisWave = false;
   let asteroidsDestroyedTotal = 0;
@@ -292,8 +302,8 @@ export function createAsteroidsGame(containerEl, callbacks = {}) {
     waveNumber = wave;
     waveActive = true;
     earthHitThisWave = false;
-    spawnIntervalMs = Math.max(350, 1100 - wave * 70);
-    asteroidSpeed = 42 + wave * 6;
+    spawnIntervalMs = Math.max(400, 1300 - wave * 60);
+    asteroidSpeed = 26 + wave * 5;
     asteroidMaxHp = 1 + Math.floor((wave - 1) / 2);
     spawnAccumulatorMs = spawnIntervalMs; // spawn the first one almost immediately
   }
