@@ -274,7 +274,20 @@ retune after playtesting.
 Rotation control: hold down on the **left half** of the world to spin it
 counterclockwise, the **right half** to spin it clockwise — continuous
 for as long as it's held, at a fixed speed
-(`ROTATION_SPEED_DEG_PER_SEC`), rather than a drag gesture.
+(`ROTATION_SPEED_DEG_PER_SEC`), rather than a drag gesture. The arena is
+330×330px with a fixed layout (positions are computed from constants,
+not measured at runtime), so this size is deliberately chosen to still
+fit comfortably on real phones (~360px-wide screens and up) — if you
+want it bigger, `ARENA_SIZE`/`OUTER_RADIUS`/`INNER_RADIUS` near the top
+of `js/asteroidsGame.js` all need to move together, along with the
+matching CSS sizes for `.ast-arena` and `.ast-world-sphere`.
+
+Asteroids spawn much further out than the first version and the world
+sphere itself is smaller, roughly doubling both the travel distance and
+(combined with a slower base approach speed) the actual time you get to
+react before one reaches the world — the two numbers that matter most
+for pacing are `OUTER_RADIUS - INNER_RADIUS` (distance) and
+`asteroidSpeed` in `startWave()` (speed), both in `js/asteroidsGame.js`.
 
 This one is a real physics-lite mini-game (rotation input, projectile
 travel, collision, difficulty curves) built without being able to
