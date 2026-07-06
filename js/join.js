@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient.js';
 import { generatePlayerId, EMOJI_CHOICES, escapeHtml, shuffle, launchConfetti, $ } from './utils.js';
+import { createAsteroidsGame, WEAPON_TYPES } from './asteroidsGame.js';
 
 // ------------------------------------------------------------
 // State
@@ -36,10 +37,22 @@ const BOARD_SIZE = 100;
 let currentDuelId = null;
 let myFirewall = 100;
 
+// Asteroid Defense state — the actual mini-game lives in
+// js/asteroidsGame.js; this is just the shop/wave pacing around it.
+let asteroidsMoney = 0;
+let asteroidsWave = 1;
+let asteroidsQuestionsAnsweredInBatch = 0;
+let asteroidsGameInstance = null;
+let shopCountdownInterval = null;
+let defenseCountdownInterval = null;
+const ASTEROIDS_QUESTIONS_PER_WAVE = 5;
+const ASTEROIDS_SHOP_SECONDS = 5;
+const ASTEROIDS_DEFENSE_SECONDS = 10;
+
 const OPTION_CLASSES = ['opt-a', 'opt-b', 'opt-c', 'opt-d'];
 const CIRCUMFERENCE = 2 * Math.PI * 34;
 
-const screens = ['join', 'waiting', 'question', 'reveal', 'round-result', 'duel-searching', 'done', 'final'];
+const screens = ['join', 'waiting', 'rules', 'question', 'reveal', 'round-result', 'duel-searching', 'board-update', 'asteroids-shop', 'asteroids-defense', 'done', 'final'];
 function showScreen(name) {
   for (const s of screens) {
     $(`#screen-${s}`).hidden = s !== name;
@@ -149,10 +162,83 @@ async function joinGame() {
 // Step 3: each player gets the full question set once, then
 // works through their own shuffled order at their own pace.
 // ------------------------------------------------------------
+// ------------------------------------------------------------
+// Quick "how to play" rules screen shown right when a game starts,
+// before the first question — so players actually know what's going on
+// instead of figuring out the mechanics mid-game. Auto-continues after
+// a few seconds so it never strands anyone who doesn't tap anything.
+// ------------------------------------------------------------
+const MODE_RULES = {
+  classic: {
+    title: '🧠 Classic Quiz',
+    body: ['Answer each question at your own pace.', 'Faster correct answers earn more points!'],
+  },
+  board: {
+    title: '🐍🛗 Eels & Escalators',
+    body: [
+      'Every 6 questions is a round — how many you get right is how far you move on the shared board.',
+      'Land on an escalator to zoom up, or an eel to slide back down.',
+      'First to square 100 wins!',
+    ],
+  },
+  duel: {
+    title: '🔥 Firewall Duel',
+    body: [
+      "You'll be matched against another player for a quick 1-on-1.",
+      'Answer correctly and fast to damage their firewall.',
+      "Break their firewall to win the round — then you'll get a new opponent!",
+    ],
+  },
+  outbreak: {
+    title: '🦠 Outbreak: Antivirus Grid',
+    body: [
+      'Correct answers claim a node on the shared grid, shown on the main screen.',
+      'Claim nodes next to your own territory for bonus chain points!',
+      'Once the grid fills up, fast correct answers can flip a rival node.',
+      "You'll get a peek at the board on your own screen every 5 questions.",
+    ],
+  },
+  asteroids: {
+    title: '☄️ Asteroid Defense',
+    body: [
+      "Answer 5 questions to earn money — faster correct answers earn more!",
+      "Then you'll get 5 seconds in the shop to buy or upgrade weapons.",
+      'Drag to rotate your world — weapons rotate with it, so aim them at incoming asteroids!',
+      'The Rocket Launcher auto-tracks targets, no aiming needed.',
+      "If an asteroid hits your world, you can't score again until the wave ends.",
+      'Asteroids get tougher and faster with every wave!',
+    ],
+  },
+};
+
+let pendingGameStartPayload = null;
+let rulesAutoTimeout = null;
+
 function onGameStart(payload) {
   gameMode = payload.mode || 'classic';
   gameEnded = false;
+  pendingGameStartPayload = payload;
+  showModeRules();
+}
 
+function showModeRules() {
+  const rules = MODE_RULES[gameMode] || MODE_RULES.classic;
+  $('#rules-title').textContent = rules.title;
+  $('#rules-body').innerHTML = rules.body.map((line) => `<li>${escapeHtml(line)}</li>`).join('');
+  showScreen('rules');
+
+  clearTimeout(rulesAutoTimeout);
+  rulesAutoTimeout = setTimeout(proceedPastRules, 8000);
+}
+
+function proceedPastRules() {
+  clearTimeout(rulesAutoTimeout);
+  beginGameForMode(pendingGameStartPayload);
+}
+
+$('#btn-rules-continue').addEventListener('click', proceedPastRules);
+
+function beginGameForMode(payload) {
   if (gameMode === 'board') {
     allQuestions = payload.questions.map((q) => ({ ...q, options: shuffle(q.options) }));
     usedThisLap = new Set();
@@ -164,6 +250,19 @@ function onGameStart(payload) {
   if (gameMode === 'duel') {
     myFirewall = 100;
     enterDuelSearching();
+    return;
+  }
+
+  if (gameMode === 'asteroids') {
+    const withShuffledOptions = payload.questions.map((q) => ({ ...q, options: shuffle(q.options) }));
+    myQueue = shuffle(withShuffledOptions);
+    myIndex = -1;
+    myScore = 0;
+    asteroidsMoney = 0;
+    asteroidsWave = 1;
+    asteroidsQuestionsAnsweredInBatch = 0;
+    initAsteroidsGameInstance();
+    showNextAsteroidsQuestion();
     return;
   }
 
@@ -299,6 +398,8 @@ function submitAnswer(optionId) {
         maybeShowRoundResult();
       }
     }, 4000);
+  } else if (gameMode === 'asteroids') {
+    advanceTimeout = setTimeout(() => showNextAsteroidsQuestion(), 4000);
   } else {
     advanceTimeout = setTimeout(() => showNextQuestion(), 4000);
   }
@@ -371,7 +472,46 @@ function onAnswerResult(payload) {
 
     flashRevealScreen(positiveFlash);
     showScreen('reveal');
-    setTimeout(() => showNextQuestion(), 1400);
+    setTimeout(() => {
+      if (payload.gridSnapshot) {
+        renderBoardSnapshot(payload.gridSnapshot);
+        showScreen('board-update');
+        setTimeout(() => showNextQuestion(), 5000);
+      } else {
+        showNextQuestion();
+      }
+    }, 1400);
+    return;
+  }
+
+  if (gameMode === 'asteroids') {
+    asteroidsMoney = payload.totalScore;
+    myScore = payload.totalScore;
+
+    const banner = $('#reveal-banner');
+    if (payload.correct) {
+      banner.textContent = `+$${payload.points}! 💰`;
+      banner.className = 'reveal-banner correct';
+    } else {
+      banner.textContent = 'Not quite ❌';
+      banner.className = 'reveal-banner incorrect';
+    }
+    $('#points-earned').textContent = '';
+    $('#score-label').textContent = 'Your money';
+    $('#my-total-score').textContent = `$${asteroidsMoney}`;
+
+    flashRevealScreen(payload.correct);
+    showScreen('reveal');
+
+    asteroidsQuestionsAnsweredInBatch += 1;
+    setTimeout(() => {
+      if (asteroidsQuestionsAnsweredInBatch >= ASTEROIDS_QUESTIONS_PER_WAVE) {
+        asteroidsQuestionsAnsweredInBatch = 0;
+        enterAsteroidsShopPhase();
+      } else {
+        showNextAsteroidsQuestion();
+      }
+    }, 1400);
     return;
   }
 
@@ -533,6 +673,210 @@ function enterDuelSearching() {
   showScreen('duel-searching');
 }
 
+// Renders the same compact grid style the host screen uses, from the
+// small snapshot the host sends every 5 questions in Outbreak mode.
+function renderBoardSnapshot(snapshot) {
+  const legendById = Object.fromEntries(snapshot.legend.map((p) => [p.id, p]));
+
+  $('#snapshot-legend').innerHTML = snapshot.legend
+    .map(
+      (p) => `
+        <div class="outbreak-legend-chip">
+          <span class="outbreak-legend-swatch" style="background:${p.color}"></span>
+          <span>${p.emoji} ${escapeHtml(p.name)}</span>
+        </div>
+      `
+    )
+    .join('');
+
+  $('#snapshot-grid').innerHTML = snapshot.cells
+    .map((ownerId) => {
+      if (!ownerId || !legendById[ownerId]) return `<div class="outbreak-cell"></div>`;
+      const owner = legendById[ownerId];
+      return `<div class="outbreak-cell claimed" style="background:${owner.color}22;border-color:${owner.color};" title="${escapeHtml(owner.name)}">${owner.emoji}</div>`;
+    })
+    .join('');
+}
+
+// ------------------------------------------------------------
+// Asteroid Defense — question batches of 5 feed money, then a 5-second
+// shop, then a 10-second wave of the actual mini-game (js/asteroidsGame.js
+// runs the physics; this just drives the pacing around it). Loops
+// forever, escalating in difficulty, until the host ends the game.
+// ------------------------------------------------------------
+function initAsteroidsGameInstance() {
+  const container = $('#asteroids-arena-container');
+  asteroidsGameInstance = createAsteroidsGame(container, {
+    onAsteroidDestroyed: (total) => {
+      $('#defense-destroyed-count').textContent = total;
+    },
+    onEarthHit: () => {
+      $('#defense-shields-banner').hidden = false;
+    },
+  });
+}
+
+function showNextAsteroidsQuestion() {
+  myIndex++;
+  if (myIndex >= myQueue.length) {
+    // Asteroid waves keep escalating until the host ends the game, so
+    // there's no natural "finished the quiz" point like other modes —
+    // just reshuffle and keep going.
+    myQueue = shuffle(myQueue.map((q) => ({ ...q, options: shuffle(q.options) })));
+    myIndex = 0;
+  }
+
+  currentQuestion = myQueue[myIndex];
+  answered = false;
+  questionStartClientTime = performance.now();
+
+  $('#progress-label').textContent = `☄️ Question ${asteroidsQuestionsAnsweredInBatch + 1} of ${ASTEROIDS_QUESTIONS_PER_WAVE}`;
+  $('#player-question-text').textContent = currentQuestion.text;
+
+  const grid = $('#player-options-grid');
+  grid.innerHTML = currentQuestion.options
+    .map((opt, i) => `
+      <button type="button" class="option-btn ${OPTION_CLASSES[i]}" data-option-id="${opt.id}">
+        <span class="shape"></span>${escapeHtml(opt.text)}
+      </button>
+    `)
+    .join('');
+  grid.querySelectorAll('.option-btn').forEach((btn) => {
+    btn.addEventListener('click', () => { btn.classList.add('tapped'); submitAnswer(btn.dataset.optionId); });
+  });
+
+  showScreen('question');
+  startTimer(currentQuestion.timeLimitSeconds, () => {
+    if (!answered) submitAnswer(null);
+  });
+}
+
+function enterAsteroidsShopPhase() {
+  renderAsteroidsShop();
+  showScreen('asteroids-shop');
+
+  let remaining = ASTEROIDS_SHOP_SECONDS;
+  $('#shop-timer').textContent = remaining;
+  clearInterval(shopCountdownInterval);
+  shopCountdownInterval = setInterval(() => {
+    remaining -= 1;
+    $('#shop-timer').textContent = Math.max(0, remaining);
+    if (remaining <= 0) {
+      clearInterval(shopCountdownInterval);
+      enterAsteroidsDefensePhase();
+    }
+  }, 1000);
+}
+
+function weaponDescription(def) {
+  if (def.homing) return 'Auto-tracks any asteroid in range — no aiming needed!';
+  return `Fires ${(1000 / def.baseFireRateMs).toFixed(1)}/sec — rotate the world to aim`;
+}
+
+function renderAsteroidsShop() {
+  $('#shop-money').textContent = `$${asteroidsMoney}`;
+  $('#shop-wave-label').textContent = `Wave ${asteroidsWave} incoming…`;
+
+  const atMaxWeapons = asteroidsGameInstance.getWeaponCount() >= asteroidsGameInstance.getMaxWeapons();
+  const buyList = $('#shop-buy-list');
+  buyList.innerHTML = Object.values(WEAPON_TYPES)
+    .map(
+      (def) => `
+        <div class="shop-weapon-card">
+          <span class="shop-emoji">${def.emoji}</span>
+          <div class="shop-info">
+            <span class="shop-name">${escapeHtml(def.name)}</span>
+            <span class="shop-desc">${escapeHtml(weaponDescription(def))}</span>
+          </div>
+          <button type="button" class="shop-buy-btn" data-type="${def.key}" ${asteroidsMoney < def.cost || atMaxWeapons ? 'disabled' : ''}>
+            $${def.cost}
+          </button>
+        </div>
+      `
+    )
+    .join('');
+  buyList.querySelectorAll('.shop-buy-btn').forEach((btn) => {
+    btn.addEventListener('click', () => buyWeapon(btn.dataset.type));
+  });
+
+  const owned = asteroidsGameInstance.getWeapons();
+  const ownedList = $('#shop-owned-list');
+  ownedList.innerHTML =
+    owned.length === 0
+      ? '<p class="center-text" style="color:var(--text-faint);font-size:13px;">No weapons yet — buy one above!</p>'
+      : owned
+          .map(
+            (w) => `
+        <div class="shop-owned-card">
+          <span>${w.emoji}</span>
+          <span>${escapeHtml(w.name)} · Lv.${w.level}</span>
+          <button type="button" class="shop-upgrade-btn" data-index="${w.index}" ${
+              w.upgradeCost === null || asteroidsMoney < w.upgradeCost ? 'disabled' : ''
+            }>
+            ${w.upgradeCost === null ? 'MAX' : `Upgrade $${w.upgradeCost}`}
+          </button>
+        </div>
+      `
+          )
+          .join('');
+  ownedList.querySelectorAll('.shop-upgrade-btn').forEach((btn) => {
+    btn.addEventListener('click', () => upgradeWeapon(parseInt(btn.dataset.index, 10)));
+  });
+}
+
+function buyWeapon(typeKey) {
+  const def = WEAPON_TYPES[typeKey];
+  if (!def || asteroidsMoney < def.cost) return;
+  if (!asteroidsGameInstance.addWeapon(typeKey)) return;
+  asteroidsMoney -= def.cost;
+  renderAsteroidsShop();
+}
+
+function upgradeWeapon(index) {
+  const owned = asteroidsGameInstance.getWeapons();
+  const w = owned[index];
+  if (!w || w.upgradeCost === null || asteroidsMoney < w.upgradeCost) return;
+  if (!asteroidsGameInstance.upgradeWeapon(index)) return;
+  asteroidsMoney -= w.upgradeCost;
+  renderAsteroidsShop();
+}
+
+function enterAsteroidsDefensePhase() {
+  $('#defense-wave-label').textContent = `Wave ${asteroidsWave}`;
+  $('#defense-destroyed-count').textContent = asteroidsGameInstance.getAsteroidsDestroyed();
+  $('#defense-shields-banner').hidden = true;
+  showScreen('asteroids-defense');
+
+  asteroidsGameInstance.startWave(asteroidsWave);
+
+  let remaining = ASTEROIDS_DEFENSE_SECONDS;
+  $('#defense-timer').textContent = remaining;
+  clearInterval(defenseCountdownInterval);
+  defenseCountdownInterval = setInterval(() => {
+    remaining -= 1;
+    $('#defense-timer').textContent = Math.max(0, remaining);
+    if (remaining <= 0) {
+      clearInterval(defenseCountdownInterval);
+      asteroidsGameInstance.stopWave();
+      syncAsteroidsProgress();
+      asteroidsWave += 1;
+      showNextAsteroidsQuestion();
+    }
+  }, 1000);
+}
+
+function syncAsteroidsProgress() {
+  channel.send({
+    type: 'broadcast',
+    event: 'asteroids_sync',
+    payload: {
+      playerId,
+      asteroidsDestroyed: asteroidsGameInstance.getAsteroidsDestroyed(),
+      wave: asteroidsGameInstance.getWave(),
+    },
+  });
+}
+
 // ------------------------------------------------------------
 // Step 6: final results (host ended the game)
 // ------------------------------------------------------------
@@ -562,6 +906,12 @@ function onGameOver(payload) {
 
   clearTimer();
   clearTimeout(advanceTimeout);
+  clearInterval(shopCountdownInterval);
+  clearInterval(defenseCountdownInterval);
+  if (asteroidsGameInstance) {
+    asteroidsGameInstance.destroy();
+    asteroidsGameInstance = null;
+  }
   showScreen('final');
   launchConfetti();
 }

@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient.js';
-import { calculateScore, rankPlayers, calculateDuelDamage, calculateSpeedFraction, OUTBREAK_CHAIN_BONUS } from './scoring.js';
+import { calculateScore, rankPlayers, calculateDuelDamage, calculateSpeedFraction, calculateMoney, OUTBREAK_CHAIN_BONUS } from './scoring.js';
 import { generateJoinCode, escapeHtml, shuffle, launchConfetti, $ } from './utils.js';
 import { requireRole } from './authGuard.js';
 import { BOARD_SIZE, ESCALATORS, EELS } from './boardConfig.js';
@@ -17,7 +17,8 @@ let players = {};           // playerId -> { id, name, emoji, score, answered, .
 
 // ------------------------------------------------------------
 // Game mode — 'classic' (existing quiz), 'board' (Eels & Escalators),
-// 'duel' (Firewall Duel), or 'outbreak' (Antivirus Grid)
+// 'duel' (Firewall Duel), 'outbreak' (Antivirus Grid), or 'asteroids'
+// (Asteroid Defense)
 // ------------------------------------------------------------
 let gameMode = 'classic';
 
@@ -25,6 +26,7 @@ $('#mode-classic').addEventListener('click', () => setGameMode('classic'));
 $('#mode-board').addEventListener('click', () => setGameMode('board'));
 $('#mode-duel').addEventListener('click', () => setGameMode('duel'));
 $('#mode-outbreak').addEventListener('click', () => setGameMode('outbreak'));
+$('#mode-asteroids').addEventListener('click', () => setGameMode('asteroids'));
 
 function setGameMode(mode) {
   gameMode = mode;
@@ -32,6 +34,7 @@ function setGameMode(mode) {
   $('#mode-board').classList.toggle('selected', mode === 'board');
   $('#mode-duel').classList.toggle('selected', mode === 'duel');
   $('#mode-outbreak').classList.toggle('selected', mode === 'outbreak');
+  $('#mode-asteroids').classList.toggle('selected', mode === 'asteroids');
 }
 
 // Eels & Escalators — board-mode-only state
@@ -53,6 +56,14 @@ const DUEL_TIME_LIMIT_SECONDS = 8;
 const OUTBREAK_GRID_SIZE = 8; // 8x8 = 64 nodes
 let outbreakGrid = [];        // flat array of { ownerId: string|null, claimSpeedFraction: number }
 const OUTBREAK_COLORS = ['#7c5cfc', '#c8ff4d', '#ff6f59', '#4dd8ff', '#ffd166', '#ff5c7a', '#38bdf8', '#f472b6'];
+
+// Asteroid Defense — asteroids-mode-only state. The actual mini-game
+// (rotating world, weapons, asteroid physics) runs entirely on each
+// student's own device (js/asteroidsGame.js, driven by join.js) — the
+// host only runs the normal quiz-answering pipeline (money instead of
+// points) and receives small periodic sync messages so its leaderboard
+// can show wave/asteroids-destroyed progress.
+
 
 const screens = ['pick', 'lobby', 'live', 'final'];
 function showScreen(name) {
@@ -136,6 +147,7 @@ async function createGameSession() {
 
   channel.on('presence', { event: 'sync' }, syncPlayersFromPresence);
   channel.on('broadcast', { event: 'answer' }, ({ payload }) => handleAnswer(payload));
+  channel.on('broadcast', { event: 'asteroids_sync' }, ({ payload }) => handleAsteroidsSync(payload));
 
   channel.subscribe(async (status, err) => {
     console.log('Realtime channel status:', status, err ?? '');
@@ -147,6 +159,7 @@ async function createGameSession() {
         gameMode === 'board' ? '🐍🛗 Eels & Escalators'
         : gameMode === 'duel' ? '🔥 Firewall Duel'
         : gameMode === 'outbreak' ? '🦠 Outbreak: Antivirus Grid'
+        : gameMode === 'asteroids' ? '☄️ Asteroid Defense'
         : '🧠 Classic Quiz';
       renderJoinQrCode(code);
       showScreen('lobby');
@@ -203,6 +216,9 @@ function syncPlayersFromPresence() {
         // Outbreak fields — unused in classic/board/duel modes
         nodesOwned: 0,
         outbreakColor: null,
+        // Asteroid Defense fields — unused in every other mode
+        asteroidsDestroyed: 0,
+        wave: 1,
       };
     }
   }
@@ -255,6 +271,8 @@ function addDemoPlayers(count = 6) {
       duelOpponentId: null,
       nodesOwned: 0,
       outbreakColor: null,
+      asteroidsDestroyed: 0,
+      wave: 1,
     };
   });
   renderRoster();
@@ -319,6 +337,7 @@ function startGame() {
   if (gameMode === 'board') return startBoardGame();
   if (gameMode === 'duel') return startDuelGame();
   if (gameMode === 'outbreak') return startOutbreakGame();
+  if (gameMode === 'asteroids') return startAsteroidsGame();
 
   // Send every player the full question set (no correct answers) in one
   // message. Each player shuffles it into their own order client-side and
@@ -495,6 +514,7 @@ function handleAnswer(payload) {
   if (gameMode === 'board') return handleBoardAnswer(payload);
   if (gameMode === 'duel') return handleDuelAnswer(payload);
   if (gameMode === 'outbreak') return handleOutbreakAnswer(payload);
+  if (gameMode === 'asteroids') return handleAsteroidsAnswer(payload);
 
   const { playerId, questionId, optionId, timeTakenMs } = payload;
   const player = players[playerId];
@@ -813,6 +833,8 @@ function handleOutbreakAnswer(payload) {
     }
   }
 
+  const showBoardUpdate = player.answered > 0 && player.answered % 5 === 0;
+
   channel.send({
     type: 'broadcast',
     event: 'answer_result',
@@ -823,12 +845,23 @@ function handleOutbreakAnswer(payload) {
       points: totalPoints,
       totalScore: player.score,
       claimResult,
+      gridSnapshot: showBoardUpdate ? buildOutbreakGridSnapshot() : null,
     },
   });
 
   renderLeaderboard(rankPlayers(Object.values(players)), '#leaderboard');
   renderOutbreakGrid(changedIndex);
   updateFinishedCount();
+}
+
+// A compact snapshot of the grid + a small legend of who owns what color,
+// sent to a student's own device every 5 questions so they get a peek at
+// the shared board without needing to see it live the whole game.
+function buildOutbreakGridSnapshot() {
+  return {
+    cells: outbreakGrid.map((cell) => cell.ownerId),
+    legend: Object.values(players).map((p) => ({ id: p.id, name: p.name, emoji: p.emoji, color: p.outbreakColor })),
+  };
 }
 
 function renderOutbreakLegend() {
@@ -856,6 +889,85 @@ function renderOutbreakGrid(justChangedIndex = null) {
       return `<div class="${cls}" style="background:${owner.outbreakColor}22;border-color:${owner.outbreakColor};" title="${escapeHtml(owner.name)}">${owner.emoji}</div>`;
     })
     .join('');
+}
+
+// ------------------------------------------------------------
+// Asteroid Defense — game start. Same shape as classic mode (every
+// player gets the full question bank and self-paces through it), just
+// with money instead of points. The actual mini-game runs entirely on
+// each student's own device.
+// ------------------------------------------------------------
+function startAsteroidsGame() {
+  const sanitized = questions.map((q) => ({
+    id: q.id,
+    text: q.question_text,
+    options: q.options,
+    timeLimitSeconds: q.time_limit_seconds,
+  }));
+
+  Object.values(players).forEach((p) => {
+    p.score = 0;
+    p.answered = 0;
+    p.asteroidsDestroyed = 0;
+    p.wave = 1;
+  });
+
+  $('#live-heading').textContent = '☄️ Asteroid Defense';
+  $('#leaderboard').hidden = false;
+  $('#board-view').hidden = true;
+  $('#duel-view').hidden = true;
+  $('#outbreak-view').hidden = true;
+  $('#total-count').textContent = Object.keys(players).length;
+  $('#finished-count').textContent = '0';
+
+  channel.send({ type: 'broadcast', event: 'game_start', payload: { mode: 'asteroids', questions: sanitized } });
+
+  renderLeaderboard(rankPlayers(Object.values(players)), '#leaderboard');
+  showScreen('live');
+
+  startDemoAnswering(); // demo hook — delete this line to remove pretend-host mode
+}
+
+// Money is awarded exactly like classic scoring, just relabeled and
+// rescaled — the actual asteroid combat that money buys happens
+// entirely client-side, so this function is deliberately simple.
+function handleAsteroidsAnswer(payload) {
+  const { playerId, questionId, optionId, timeTakenMs } = payload;
+  const player = players[playerId];
+  const question = questionsById[questionId];
+  if (!player || !question) return;
+
+  const isCorrect = optionId != null && optionId === question.correct_option_id;
+  const moneyEarned = calculateMoney(isCorrect, timeTakenMs, question.time_limit_seconds);
+  player.score += moneyEarned;
+  player.answered += 1;
+
+  channel.send({
+    type: 'broadcast',
+    event: 'answer_result',
+    payload: {
+      playerId,
+      questionId,
+      correct: isCorrect,
+      points: moneyEarned,
+      totalScore: player.score,
+    },
+  });
+
+  renderLeaderboard(rankPlayers(Object.values(players)), '#leaderboard');
+  updateFinishedCount();
+}
+
+// Each student's device reports its own wave/asteroids-destroyed
+// progress periodically (after every wave), since the host never
+// simulates the actual combat — this is purely for the host's
+// leaderboard display, not used for any scoring decision.
+function handleAsteroidsSync(payload) {
+  const player = players[payload.playerId];
+  if (!player) return;
+  player.asteroidsDestroyed = payload.asteroidsDestroyed;
+  player.wave = payload.wave;
+  renderLeaderboard(rankPlayers(Object.values(players)), '#leaderboard');
 }
 
 // ------------------------------------------------------------
@@ -1129,6 +1241,11 @@ function renderLeaderboard(leaderboard, targetSelector) {
         const nodes = players[p.id]?.nodesOwned ?? 0;
         const totalNodes = OUTBREAK_GRID_SIZE * OUTBREAK_GRID_SIZE;
         suffix = `🗺️ ${nodes}/${totalNodes} nodes`;
+        barFraction = p.score / maxScore;
+      } else if (gameMode === 'asteroids') {
+        const wave = players[p.id]?.wave ?? 1;
+        const destroyed = players[p.id]?.asteroidsDestroyed ?? 0;
+        suffix = `🛰️ Wave ${wave} · 💥 ${destroyed}`;
         barFraction = p.score / maxScore;
       } else {
         const answered = players[p.id]?.answered ?? 0;

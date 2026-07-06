@@ -56,6 +56,19 @@ export function calculateDuelDamage(timeTakenMs, timeLimitSeconds) {
 // ============================================================
 export const OUTBREAK_CHAIN_BONUS = 60;
 
+// ============================================================
+// Asteroid Defense — money earned per correct answer, spent on weapons
+// between waves. Same speed-decay shape as everywhere else.
+// ============================================================
+export const MAX_MONEY = 120;
+export const MIN_MONEY = 40;
+
+export function calculateMoney(isCorrect, timeTakenMs, timeLimitSeconds) {
+  if (!isCorrect) return 0;
+  const speedFraction = calculateSpeedFraction(timeTakenMs, timeLimitSeconds);
+  return Math.round((MIN_MONEY + (MAX_MONEY - MIN_MONEY) * speedFraction) / 5) * 5; // round to nearest $5
+}
+
 /**
  * Sorts players by score descending and attaches a `place` (1-indexed),
  * with ties sharing the same place.
