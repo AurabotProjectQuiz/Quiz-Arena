@@ -11,14 +11,14 @@
 // positive degrees rotate clockwise.
 // ============================================================
 
-export const ARENA_SIZE = 300;
+export const ARENA_SIZE = 330;
 const CENTER = ARENA_SIZE / 2;
-const OUTER_RADIUS = 140; // asteroids spawn here
-const INNER_RADIUS = 55; // world sphere radius — asteroids "hit" at this distance
-const WEAPON_RING_RADIUS = 70;
+const OUTER_RADIUS = 156; // asteroids spawn here — close to the edge of the arena
+const INNER_RADIUS = 35; // world sphere radius — asteroids "hit" at this distance (smaller sphere = more approach room)
+const WEAPON_RING_RADIUS = 45;
 const MAX_WEAPONS = 8;
 const MAX_WEAPON_LEVEL = 3;
-const MAX_CONCURRENT_ASTEROIDS = 14;
+const MAX_CONCURRENT_ASTEROIDS = 16;
 const ROTATION_SPEED_DEG_PER_SEC = 110; // how fast the world spins while holding a side
 const ASTEROID_EMOJIS = ['☄️', '🪨', '☄️'];
 
@@ -80,7 +80,7 @@ export function createAsteroidsGame(containerEl, callbacks = {}) {
   let waveNumber = 1;
   let spawnAccumulatorMs = 0;
   let spawnIntervalMs = 1000;
-  let asteroidSpeed = 60;
+  let asteroidSpeed = 42;
   let asteroidMaxHp = 1;
   let earthHitThisWave = false;
   let asteroidsDestroyedTotal = 0;
@@ -293,7 +293,7 @@ export function createAsteroidsGame(containerEl, callbacks = {}) {
     waveActive = true;
     earthHitThisWave = false;
     spawnIntervalMs = Math.max(350, 1100 - wave * 70);
-    asteroidSpeed = 60 + wave * 8;
+    asteroidSpeed = 42 + wave * 6;
     asteroidMaxHp = 1 + Math.floor((wave - 1) / 2);
     spawnAccumulatorMs = spawnIntervalMs; // spawn the first one almost immediately
   }
