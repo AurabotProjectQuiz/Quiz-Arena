@@ -275,7 +275,7 @@ input {
   animation: chip-in 0.25s ease;
 }
 .player-chip .emoji {
-  font-size: 26px;
+  font-size: 34px;
   display: inline-block;
   animation: idle-bounce 1.8s ease-in-out infinite;
 }
@@ -478,7 +478,7 @@ input {
 
 .leaderboard-row {
   display: grid;
-  grid-template-columns: 36px 32px 1fr auto;
+  grid-template-columns: 36px 40px 1fr auto;
   align-items: center;
   gap: 12px;
   background: var(--surface);
@@ -503,7 +503,7 @@ input {
 .leaderboard-row.rank-3 { border-color: var(--bronze); }
 
 .leaderboard-row .emoji {
-  font-size: 26px;
+  font-size: 34px;
   display: inline-block;
   animation: idle-bounce 1.8s ease-in-out infinite;
 }
@@ -1204,11 +1204,11 @@ input {
 
 .ast-arena {
   position: relative;
-  width: 300px;
-  height: 300px;
+  width: 330px;
+  height: 330px;
   margin: 0 auto;
   touch-action: none;
-  cursor: grab;
+  cursor: pointer;
   user-select: none;
 }
 .ast-arena:active {
@@ -1226,15 +1226,15 @@ input {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 100px;
-  height: 100px;
+  width: 68px;
+  height: 68px;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #5b8cff, #1d3fae 70%, #142a7a);
   box-shadow: 0 0 24px rgba(91, 140, 255, 0.5), inset -8px -8px 20px rgba(0, 0, 0, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 40px;
+  font-size: 30px;
 }
 
 .ast-weapon-slot {
