@@ -1407,3 +1407,15 @@ input {
   cursor: not-allowed;
 }
 
+/* ---------- consistent cross-platform emoji (see enableConsistentEmoji
+   in js/utils.js) ---------- */
+/* Sized in em so each existing font-size rule throughout the app
+   (player-chip, leaderboard-row, podium, etc.) still controls how big
+   the resulting image looks, exactly as it did with plain emoji text. */
+.fluent-emoji-img {
+  height: 1em;
+  width: 1em;
+  vertical-align: -0.15em;
+  display: inline-block;
+}
+
