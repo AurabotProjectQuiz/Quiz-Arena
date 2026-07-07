@@ -65,3 +65,43 @@ export function launchConfetti(count = 40) {
     piece.addEventListener('animationend', () => piece.remove());
   }
 }
+
+// ------------------------------------------------------------
+// Consistent cross-platform emoji rendering.
+//
+// The SAME emoji character (e.g. 🦖) renders differently on every OS,
+// because there's no image — each device's own emoji font decides how
+// to draw it (Windows 11 uses Microsoft's "Fluent Emoji" set, which
+// tends to look more polished/cute than macOS's or older Windows'
+// built-in sets). To make it look the same — and use the nicer style —
+// everywhere, this loads a small library (from a CDN, added as a
+// <script> tag in each page's <head>) that scans the page and replaces
+// Unicode emoji characters with actual Fluent Emoji images.
+//
+// Since this app re-renders things like the leaderboard or roster
+// constantly, a one-time pass on page load isn't enough — a
+// MutationObserver watches for any DOM change and re-scans (debounced,
+// so a burst of updates only triggers one pass), so newly-added emoji
+// anywhere in the app get converted automatically without every
+// render function needing to remember to call this.
+//
+// If the CDN script fails to load (network hiccup, ad blocker, etc.),
+// this fails quietly and emoji just fall back to each device's normal
+// native rendering — nothing else in the app depends on this working.
+// ------------------------------------------------------------
+export function enableConsistentEmoji() {
+  if (typeof window === 'undefined' || !window.fluentemoji) {
+    console.warn('Fluent Emoji library not loaded — emoji will use each device\'s native style instead.');
+    return;
+  }
+
+  const parseAll = () => window.fluentemoji.parse(document.body, { className: 'fluent-emoji-img' });
+  parseAll();
+
+  let debounceHandle = null;
+  const observer = new MutationObserver(() => {
+    clearTimeout(debounceHandle);
+    debounceHandle = setTimeout(parseAll, 60);
+  });
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+}

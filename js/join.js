@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient.js';
-import { generatePlayerId, EMOJI_CHOICES, escapeHtml, shuffle, launchConfetti, $ } from './utils.js';
+import { generatePlayerId, EMOJI_CHOICES, escapeHtml, shuffle, launchConfetti, enableConsistentEmoji, $ } from './utils.js';
 import { createAsteroidsGame, WEAPON_TYPES } from './asteroidsGame.js';
 
 // ------------------------------------------------------------
@@ -87,6 +87,7 @@ function renderEmojiGrid() {
     playerEmoji = btn.dataset.emoji;
   });
 }
+enableConsistentEmoji();
 renderEmojiGrid();
 
 // ------------------------------------------------------------

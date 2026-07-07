@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient.js';
 import { calculateScore, rankPlayers, calculateDuelDamage, calculateSpeedFraction, calculateMoney, OUTBREAK_CHAIN_BONUS } from './scoring.js';
-import { generateJoinCode, escapeHtml, shuffle, launchConfetti, $ } from './utils.js';
+import { generateJoinCode, escapeHtml, shuffle, launchConfetti, enableConsistentEmoji, $ } from './utils.js';
 import { requireRole } from './authGuard.js';
 import { BOARD_SIZE, ESCALATORS, EELS } from './boardConfig.js';
 
@@ -1284,6 +1284,7 @@ function renderPodium(leaderboard, targetSelector) {
 // ------------------------------------------------------------
 // Init
 // ------------------------------------------------------------
+enableConsistentEmoji();
 (async () => {
   const auth = await requireRole(['teacher', 'admin']);
   if (!auth) return;
