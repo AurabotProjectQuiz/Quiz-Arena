@@ -221,6 +221,16 @@ in `js/scoring.js`) so a firewall takes roughly 3–5 solid hits to break.
 The 8-second cap lives in `DUEL_TIME_LIMIT_SECONDS` near the top of the
 Firewall Duel section in `js/host.js` if you want to tune it.
 
+**Visuals:** each player's avatar shows inside a glowing circular
+"force field" ring whose arc-length and glow strength represent their
+current firewall % — bright and full at 100%, thinner and dimmer as it
+drains, pulsing red once it drops below 20%
+(`renderForcefieldAvatar()` in `js/utils.js`, shared by both the host
+and student screens so they match). The instant an attack resolves, a
+⚡ zap flashes between the two avatars and whichever one took damage
+gets a quick shake — both on the student's own battle screen and on the
+host's live scoreboard/pairing list.
+
 **🦠 Outbreak: Antivirus Grid** — one shared 8×8 grid (64 nodes) lives on
 the host screen only — students don't need to see it, they just answer
 their own shuffled questions independently, exactly like Classic Quiz.
@@ -274,26 +284,36 @@ retune after playtesting.
 Rotation control: hold down on the **left half** of the world to spin it
 counterclockwise, the **right half** to spin it clockwise — continuous
 for as long as it's held, at a fixed speed
-(`ROTATION_SPEED_DEG_PER_SEC`), rather than a drag gesture. The arena is
-330×330px with a fixed layout (positions are computed from constants,
-not measured at runtime), so this size is deliberately chosen to still
-fit comfortably on real phones (~360px-wide screens and up) — if you
-want it bigger, `ARENA_SIZE`/`OUTER_RADIUS`/`INNER_RADIUS` near the top
-of `js/asteroidsGame.js` all need to move together, along with the
-matching CSS sizes for `.ast-arena` and `.ast-world-sphere`.
+(`ROTATION_SPEED_DEG_PER_SEC`, 150°/sec — a full 180° turn takes about
+1.2 seconds).
 
-Asteroids spawn much further out than the first version and the world
-sphere itself is smaller, roughly doubling both the travel distance and
-(combined with a slower base approach speed) the actual time you get to
-react before one reaches the world — the two numbers that matter most
-for pacing are `OUTER_RADIUS - INNER_RADIUS` (distance) and
-`asteroidSpeed` in `startWave()` (speed), both in `js/asteroidsGame.js`.
+The arena is genuinely **responsive** rather than a fixed pixel size:
+the CSS sizes `.ast-arena` to `min(94vw, 480px)` (fills nearly the full
+screen width on a phone, capped at 480px on anything wider), and
+`createAsteroidsGame()` measures the actual rendered size at creation
+time and computes every other measurement — world size, spawn ring,
+weapon ring — as a fraction of that. So it fills whatever space it's
+actually given on any device, instead of everyone getting the same
+small fixed box regardless of screen size.
+
+Asteroids also spawn much further out and travel much slower than
+earlier versions — on a typical ~390px-wide phone that's roughly a
+4.5–5 second approach at wave 1 (versus about 1.25 seconds in the very
+first version), which should be enough time to notice an incoming
+asteroid, decide which weapon should take it, and rotate to line it up.
+The two things that matter most for this pacing, both in
+`js/asteroidsGame.js`: the geometry fractions right after the size is
+measured (`OUTER_RADIUS`/`INNER_RADIUS`, currently 0.48/0.09 of the
+arena's width) control distance, and `asteroidSpeed` inside `startWave()`
+(currently `26 + wave * 5`) controls speed — increase distance or
+decrease speed for even more reaction time, or the reverse to make it
+more frantic.
 
 This one is a real physics-lite mini-game (rotation input, projectile
 travel, collision, difficulty curves) built without being able to
 visually test animation feel — **it will almost certainly need some
-tuning once real students are playing it on real phones** (rotation
-speed, spawn pacing, weapon arc width, weapon balance).
+tuning once real students are playing it on real phones** (spawn
+pacing, weapon arc width, weapon balance).
 `ROTATION_SPEED_DEG_PER_SEC` and each weapon's `arcDegrees` near the top
 of `js/asteroidsGame.js` are the first things to adjust if rotating feels
 too slow/fast or aiming feels too strict/loose.
@@ -339,6 +359,33 @@ quiz list" and "load questions for the chosen quiz" at the very start.
   timing to always claim max speed points. Fine for casual classroom use;
   if that ever matters, the host can independently timestamp when it
   *receives* each answer as a sanity check.
+
+## Consistent emoji across every device
+
+The same emoji character looks different on every OS — Windows 11 draws
+it with Microsoft's "Fluent Emoji" set, macOS with Apple's own, and so
+on, since there's no actual image, just a Unicode character each device
+renders in its own style. `host.html` and `join.html` both load a small
+CDN library (`emoji.fluent-cdn.com`) that scans the page and replaces
+emoji characters with actual Fluent Emoji images, so everyone sees the
+same (nicer, more game-like) style regardless of device —
+`enableConsistentEmoji()` in `js/utils.js`.
+
+Since the leaderboard, roster, and podium all re-render constantly during
+a game, a one-time pass on page load isn't enough — a `MutationObserver`
+watches for any DOM change and re-scans automatically (debounced, so a
+burst of updates only triggers one pass), rather than every render
+function needing to remember to call this itself.
+
+If that CDN ever turns out unreliable (it's a smaller, less established
+project than some alternatives — e.g. Twemoji, which has similar "swap
+in nicer images" behavior via a different, more battle-tested CDN, but
+in Twitter's own flat cartoon style rather than Microsoft's Fluent
+look), switching providers is a one-line change: update the `<script>`
+src in `host.html`/`join.html`, and the `window.fluentemoji.parse(...)`
+call in `enableConsistentEmoji()`. If the CDN is ever unreachable, this
+fails quietly and emoji just fall back to each device's native
+rendering — nothing else in the app depends on it working.
 
 ## Previewing it yourself (no second device needed)
 

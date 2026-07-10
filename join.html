@@ -59,15 +59,13 @@
   <section id="screen-question" class="screen" hidden>
     <div id="duel-header" class="duel-vs-header" hidden>
       <div class="duel-vs-side">
-        <span class="duel-vs-emoji" id="duel-my-emoji">🧑</span>
+        <div id="duel-my-avatar"></div>
         <span class="duel-vs-name">You</span>
-        <div class="firewall-bar"><div class="firewall-fill" id="duel-my-firewall-fill" style="width:100%"></div></div>
       </div>
       <span class="duel-vs-label">⚡VS⚡</span>
       <div class="duel-vs-side">
-        <span class="duel-vs-emoji" id="duel-opponent-emoji">🤖</span>
+        <div id="duel-opponent-avatar"></div>
         <span class="duel-vs-name" id="duel-opponent-name">Opponent</span>
-        <div class="firewall-bar"><div class="firewall-fill" id="duel-opp-firewall-fill" style="width:100%"></div></div>
       </div>
     </div>
     <div class="timer-ring" id="timer-ring">
@@ -86,6 +84,17 @@
 
   <!-- STEP 4: instant per-question feedback, then auto-advance -->
   <section id="screen-reveal" class="screen" hidden>
+    <div id="duel-reveal-avatars" class="duel-vs-header" style="position:relative;" hidden>
+      <div class="duel-vs-side">
+        <div id="duel-reveal-my-avatar"></div>
+        <span class="duel-vs-name">You</span>
+      </div>
+      <div class="zap-bolt" id="zap-bolt">⚡</div>
+      <div class="duel-vs-side">
+        <div id="duel-reveal-opp-avatar"></div>
+        <span class="duel-vs-name" id="duel-reveal-opp-name">Opponent</span>
+      </div>
+    </div>
     <div class="reveal-banner" id="reveal-banner"></div>
     <div class="points-earned" id="points-earned"></div>
     <div class="card center-text" style="max-width:300px;">
