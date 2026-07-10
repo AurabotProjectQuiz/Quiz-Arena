@@ -224,12 +224,24 @@ Firewall Duel section in `js/host.js` if you want to tune it.
 **Visuals:** each player's avatar shows inside a glowing circular
 "force field" ring whose arc-length and glow strength represent their
 current firewall % — bright and full at 100%, thinner and dimmer as it
-drains, pulsing red once it drops below 20%
+drains, pulsing red once it drops below 20%, with a rotating electric
+crackle texture behind it for a more "fluro/energized" feel
 (`renderForcefieldAvatar()` in `js/utils.js`, shared by both the host
 and student screens so they match). The instant an attack resolves, a
 ⚡ zap flashes between the two avatars and whichever one took damage
 gets a quick shake — both on the student's own battle screen and on the
 host's live scoreboard/pairing list.
+
+Every 3rd duel result, instead of the quick inline reveal, a player sees
+a full-screen battle cinematic instead: bigger force-field avatars, a ⚡
+that visibly travels across the screen from whoever landed the hit to
+whoever took it, and a floating "-340"-style damage number that pops up
+and fades, RPG-style (`showDuelBattleCinematic()` in `js/join.js`). The
+underlying duel mechanic is unchanged — every duel still resolves after
+one question — this is purely about not showing the big spectacle after
+every single ~8-second exchange, which would get repetitive fast.
+`DUEL_CINEMATIC_EVERY` near the top of `js/join.js` controls that
+frequency if 3 doesn't feel right once you've tried it.
 
 **🦠 Outbreak: Antivirus Grid** — one shared 8×8 grid (64 nodes) lives on
 the host screen only — students don't need to see it, they just answer
