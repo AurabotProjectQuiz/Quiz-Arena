@@ -67,6 +67,32 @@ export function launchConfetti(count = 40) {
 }
 
 // ------------------------------------------------------------
+// Firewall Duel: a glowing circular "force field" ring around a
+// player's emoji avatar, whose arc-length and glow strength represent
+// their current firewall %. Shared between host.js (scoreboard, duel
+// pairing cards) and join.js (the duel battle screen) so both look
+// identical.
+// ------------------------------------------------------------
+export function forcefieldColor(pct) {
+  if (pct > 50) return 'var(--lime)';
+  if (pct > 20) return 'var(--gold)';
+  return 'var(--danger)';
+}
+
+export function renderForcefieldAvatar(emoji, firewallPercent, sizePx = 64) {
+  const pct = Math.max(0, Math.min(100, firewallPercent));
+  const color = forcefieldColor(pct);
+  const criticalClass = pct <= 20 ? ' critical' : '';
+  const emojiSize = Math.round(sizePx * 0.55);
+  return `
+    <div class="forcefield-avatar${criticalClass}" style="width:${sizePx}px;height:${sizePx}px;">
+      <div class="forcefield-ring" style="--pct:${pct};--ff-color:${color};"></div>
+      <span class="forcefield-emoji" style="font-size:${emojiSize}px;">${emoji}</span>
+    </div>
+  `;
+}
+
+// ------------------------------------------------------------
 // Consistent cross-platform emoji rendering.
 //
 // The SAME emoji character (e.g. 🦖) renders differently on every OS,

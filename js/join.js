@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient.js';
-import { generatePlayerId, EMOJI_CHOICES, escapeHtml, shuffle, launchConfetti, enableConsistentEmoji, $ } from './utils.js';
+import { generatePlayerId, EMOJI_CHOICES, escapeHtml, shuffle, launchConfetti, enableConsistentEmoji, renderForcefieldAvatar, $ } from './utils.js';
 import { createAsteroidsGame, WEAPON_TYPES } from './asteroidsGame.js';
 
 // ------------------------------------------------------------
@@ -36,6 +36,8 @@ const BOARD_SIZE = 100;
 // Firewall Duel state
 let currentDuelId = null;
 let myFirewall = 100;
+let currentDuelOpponentEmoji = '🤖';
+let currentDuelOpponentName = 'Opponent';
 
 // Asteroid Defense state — the actual mini-game lives in
 // js/asteroidsGame.js; this is just the shop/wave pacing around it.
@@ -592,12 +594,12 @@ function onDuelStart(payload) {
   const opponent = payload.players[opponentId];
   const me = payload.players[playerId];
   myFirewall = me.firewall;
+  currentDuelOpponentEmoji = opponent.emoji;
+  currentDuelOpponentName = opponent.name;
 
-  $('#duel-my-emoji').textContent = playerEmoji;
-  $('#duel-opponent-emoji').textContent = opponent.emoji;
+  $('#duel-my-avatar').innerHTML = renderForcefieldAvatar(playerEmoji, myFirewall, 64);
+  $('#duel-opponent-avatar').innerHTML = renderForcefieldAvatar(opponent.emoji, opponent.firewall, 64);
   $('#duel-opponent-name').textContent = opponent.name;
-  $('#duel-my-firewall-fill').style.width = `${myFirewall}%`;
-  $('#duel-opp-firewall-fill').style.width = `${opponent.firewall}%`;
   $('#duel-header').hidden = false;
 
   currentQuestion = { ...payload.question, options: shuffle(payload.question.options) };
@@ -629,6 +631,8 @@ function onDuelResult(payload) {
   if (payload.duelId !== currentDuelId) return; // stale — already moved on
   const mine = payload.results[playerId];
   if (!mine) return;
+  const opponentId = Object.keys(payload.results).find((id) => id !== playerId);
+  const theirs = opponentId ? payload.results[opponentId] : null;
 
   clearTimeout(advanceTimeout);
   myFirewall = mine.firewall;
@@ -659,6 +663,27 @@ function onDuelResult(payload) {
 
   $('#score-label').textContent = 'Your firewall';
   $('#my-total-score').textContent = `${myFirewall}%`;
+
+  // Force-field avatars + a zap flash the instant the attack lands, so
+  // the result reads as an actual hit rather than just changed numbers.
+  $('#duel-reveal-avatars').hidden = false;
+  $('#duel-reveal-my-avatar').innerHTML = renderForcefieldAvatar(playerEmoji, mine.firewall, 64);
+  $('#duel-reveal-opp-avatar').innerHTML = renderForcefieldAvatar(currentDuelOpponentEmoji, theirs ? theirs.firewall : 100, 64);
+  $('#duel-reveal-opp-name').textContent = currentDuelOpponentName;
+
+  const zapBolt = $('#zap-bolt');
+  zapBolt.classList.remove('zap-active');
+  void zapBolt.offsetWidth; // force reflow so the animation replays every time
+  const myAvatarEl = $('#duel-reveal-my-avatar').querySelector('.forcefield-avatar');
+  const oppAvatarEl = $('#duel-reveal-opp-avatar').querySelector('.forcefield-avatar');
+  myAvatarEl?.classList.remove('hit-shake');
+  oppAvatarEl?.classList.remove('hit-shake');
+  if (mine.damageTaken > 0 || mine.yourDamageDealt > 0) {
+    zapBolt.classList.add('zap-active');
+    void myAvatarEl?.offsetWidth;
+    if (mine.damageTaken > 0) myAvatarEl?.classList.add('hit-shake');
+    if (mine.yourDamageDealt > 0) oppAvatarEl?.classList.add('hit-shake');
+  }
 
   if (outcome !== null) flashRevealScreen(outcome);
   showScreen('reveal');

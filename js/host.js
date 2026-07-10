@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient.js';
 import { calculateScore, rankPlayers, calculateDuelDamage, calculateSpeedFraction, calculateMoney, OUTBREAK_CHAIN_BONUS } from './scoring.js';
-import { generateJoinCode, escapeHtml, shuffle, launchConfetti, enableConsistentEmoji, $ } from './utils.js';
+import { generateJoinCode, escapeHtml, shuffle, launchConfetti, enableConsistentEmoji, renderForcefieldAvatar, $ } from './utils.js';
 import { requireRole } from './authGuard.js';
 import { BOARD_SIZE, ESCALATORS, EELS } from './boardConfig.js';
 
@@ -648,26 +648,18 @@ function renderDuelView() {
       return `
         <div class="duel-card">
           <div class="duel-vs-side">
-            <span class="duel-vs-emoji">${a.emoji}</span>
+            ${renderForcefieldAvatar(a.emoji, a.firewall, 44)}
             <span class="duel-vs-name">${escapeHtml(a.name)}</span>
-            <div class="firewall-bar"><div class="firewall-fill" style="width:${a.firewall}%;background:${firewallColor(a.firewall)}"></div></div>
           </div>
           <span class="duel-vs-label">⚡</span>
           <div class="duel-vs-side">
-            <span class="duel-vs-emoji">${b.emoji}</span>
+            ${renderForcefieldAvatar(b.emoji, b.firewall, 44)}
             <span class="duel-vs-name">${escapeHtml(b.name)}</span>
-            <div class="firewall-bar"><div class="firewall-fill" style="width:${b.firewall}%;background:${firewallColor(b.firewall)}"></div></div>
           </div>
         </div>
       `;
     })
     .join('');
-}
-
-function firewallColor(pct) {
-  if (pct > 50) return 'var(--lime)';
-  if (pct > 20) return 'var(--gold)';
-  return 'var(--danger)';
 }
 
 // Firewall Duel ranking: most wins first, breaches dealt breaks ties.
@@ -1228,6 +1220,7 @@ function renderLeaderboard(leaderboard, targetSelector) {
     .map((p) => {
       let suffix;
       let barFraction;
+      let emojiHtml = `<span class="emoji">${p.emoji}</span>`;
       if (gameMode === 'board') {
         const finished = players[p.id]?.finished;
         suffix = finished ? `finished 🏁 #${players[p.id].finishOrder}` : `square ${p.score}/${BOARD_SIZE}`;
@@ -1237,6 +1230,7 @@ function renderLeaderboard(leaderboard, targetSelector) {
         const breaches = players[p.id]?.breachesDealt ?? 0;
         suffix = `🛡️ ${firewall}% · ${breaches} breaches`;
         barFraction = p.score / maxScore;
+        emojiHtml = renderForcefieldAvatar(p.emoji, firewall, 34);
       } else if (gameMode === 'outbreak') {
         const nodes = players[p.id]?.nodesOwned ?? 0;
         const totalNodes = OUTBREAK_GRID_SIZE * OUTBREAK_GRID_SIZE;
@@ -1255,7 +1249,7 @@ function renderLeaderboard(leaderboard, targetSelector) {
       return `
       <div class="leaderboard-row rank-${p.place}">
         <span class="place">${p.place}</span>
-        <span class="emoji">${p.emoji}</span>
+        ${emojiHtml}
         <span class="name">${escapeHtml(p.name)} <span style="color:var(--text-faint);font-size:12px;">${suffix}</span></span>
         <span class="score">${p.score}</span>
         <div class="bar"><div class="bar-fill" style="width:${barFraction * 100}%"></div></div>
