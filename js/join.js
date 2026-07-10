@@ -38,6 +38,8 @@ let currentDuelId = null;
 let myFirewall = 100;
 let currentDuelOpponentEmoji = '🤖';
 let currentDuelOpponentName = 'Opponent';
+let duelResultCounter = 0; // every 3rd result gets the big full-screen cinematic
+const DUEL_CINEMATIC_EVERY = 3;
 
 // Asteroid Defense state — the actual mini-game lives in
 // js/asteroidsGame.js; this is just the shop/wave pacing around it.
@@ -54,7 +56,7 @@ const ASTEROIDS_DEFENSE_SECONDS = 10;
 const OPTION_CLASSES = ['opt-a', 'opt-b', 'opt-c', 'opt-d'];
 const CIRCUMFERENCE = 2 * Math.PI * 34;
 
-const screens = ['join', 'waiting', 'rules', 'question', 'reveal', 'round-result', 'duel-searching', 'board-update', 'asteroids-shop', 'asteroids-defense', 'done', 'final'];
+const screens = ['join', 'waiting', 'rules', 'question', 'reveal', 'round-result', 'duel-battle', 'duel-searching', 'board-update', 'asteroids-shop', 'asteroids-defense', 'done', 'final'];
 function showScreen(name) {
   for (const s of screens) {
     $(`#screen-${s}`).hidden = s !== name;
@@ -252,6 +254,7 @@ function beginGameForMode(payload) {
 
   if (gameMode === 'duel') {
     myFirewall = 100;
+    duelResultCounter = 0;
     enterDuelSearching();
     return;
   }
@@ -636,6 +639,12 @@ function onDuelResult(payload) {
 
   clearTimeout(advanceTimeout);
   myFirewall = mine.firewall;
+  duelResultCounter += 1;
+
+  if (duelResultCounter % DUEL_CINEMATIC_EVERY === 0) {
+    showDuelBattleCinematic(mine, theirs);
+    return;
+  }
 
   const banner = $('#reveal-banner');
   let outcome = null; // true = positive flash, false = negative flash, null = no flash (a wash)
@@ -691,6 +700,78 @@ function onDuelResult(payload) {
     if (gameEnded) return;
     enterDuelSearching();
   }, 1800);
+}
+
+// The big, dramatic version — shown every 3rd duel result instead of the
+// quick inline reveal, so the full-screen spectacle doesn't get old from
+// showing up after every single ~8-second exchange.
+function showDuelBattleCinematic(mine, theirs) {
+  const oppFirewall = theirs ? theirs.firewall : 100;
+  $('#duel-battle-my-avatar').innerHTML = renderForcefieldAvatar(playerEmoji, mine.firewall, 120);
+  $('#duel-battle-opp-avatar').innerHTML = renderForcefieldAvatar(currentDuelOpponentEmoji, oppFirewall, 120);
+  $('#duel-battle-opp-name').textContent = currentDuelOpponentName;
+
+  const banner = $('#duel-battle-banner');
+  if (mine.opponentBroken) {
+    banner.textContent = 'Firewall breached! You win this one 🏆';
+    banner.className = 'duel-battle-banner correct';
+  } else if (mine.broken) {
+    banner.textContent = 'Your firewall was breached! 😵';
+    banner.className = 'duel-battle-banner incorrect';
+  } else if (mine.yourDamageDealt > 0) {
+    banner.textContent = `Direct hit — ${mine.yourDamageDealt} damage!`;
+    banner.className = 'duel-battle-banner correct';
+  } else if (mine.damageTaken > 0) {
+    banner.textContent = `Took ${mine.damageTaken} damage!`;
+    banner.className = 'duel-battle-banner incorrect';
+  } else {
+    banner.textContent = 'Both firewalls held ⚡';
+    banner.className = 'duel-battle-banner';
+  }
+
+  // Zap travels from whoever landed the hit toward whoever took it — "my"
+  // avatar sits on the left of the stage, opponent on the right.
+  const zapBolt = $('#duel-battle-zap');
+  zapBolt.classList.remove('zap-fire-right', 'zap-fire-left');
+  void zapBolt.offsetWidth; // force reflow so the animation replays every time
+
+  const myAvatarEl = $('#duel-battle-my-avatar').querySelector('.forcefield-avatar');
+  const oppAvatarEl = $('#duel-battle-opp-avatar').querySelector('.forcefield-avatar');
+  myAvatarEl?.classList.remove('hit-shake');
+  oppAvatarEl?.classList.remove('hit-shake');
+  clearFloatingDamage(myAvatarEl);
+  clearFloatingDamage(oppAvatarEl);
+
+  if (mine.yourDamageDealt > 0) {
+    zapBolt.classList.add('zap-fire-right');
+    void oppAvatarEl?.offsetWidth;
+    oppAvatarEl?.classList.add('hit-shake');
+    spawnFloatingDamage(oppAvatarEl, `-${mine.yourDamageDealt}`, 'damage');
+  } else if (mine.damageTaken > 0) {
+    zapBolt.classList.add('zap-fire-left');
+    void myAvatarEl?.offsetWidth;
+    myAvatarEl?.classList.add('hit-shake');
+    spawnFloatingDamage(myAvatarEl, `-${mine.damageTaken}`, 'damage');
+  }
+
+  showScreen('duel-battle');
+  setTimeout(() => {
+    if (gameEnded) return;
+    enterDuelSearching();
+  }, 2800);
+}
+
+function spawnFloatingDamage(anchorEl, text, kind) {
+  if (!anchorEl) return;
+  const el = document.createElement('div');
+  el.className = `floating-damage ${kind}`;
+  el.textContent = text;
+  anchorEl.appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+}
+
+function clearFloatingDamage(anchorEl) {
+  anchorEl?.querySelectorAll('.floating-damage').forEach((el) => el.remove());
 }
 
 function enterDuelSearching() {

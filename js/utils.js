@@ -85,8 +85,8 @@ export function renderForcefieldAvatar(emoji, firewallPercent, sizePx = 64) {
   const criticalClass = pct <= 20 ? ' critical' : '';
   const emojiSize = Math.round(sizePx * 0.55);
   return `
-    <div class="forcefield-avatar${criticalClass}" style="width:${sizePx}px;height:${sizePx}px;">
-      <div class="forcefield-ring" style="--pct:${pct};--ff-color:${color};"></div>
+    <div class="forcefield-avatar${criticalClass}" style="width:${sizePx}px;height:${sizePx}px;--pct:${pct};--ff-color:${color};">
+      <div class="forcefield-ring"></div>
       <span class="forcefield-emoji" style="font-size:${emojiSize}px;">${emoji}</span>
     </div>
   `;
