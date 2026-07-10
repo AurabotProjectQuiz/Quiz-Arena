@@ -1419,3 +1419,63 @@ input {
   display: inline-block;
 }
 
+/* ---------- Firewall Duel: force-field avatar ring ---------- */
+
+.forcefield-avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.forcefield-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(var(--ff-color, var(--lime)) calc(var(--pct, 100) * 1%), transparent 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px));
+  filter: drop-shadow(0 0 5px var(--ff-color, var(--lime))) drop-shadow(0 0 9px var(--ff-color, var(--lime)));
+  transition: background 0.5s ease, filter 0.5s ease;
+}
+
+.forcefield-avatar.critical .forcefield-ring {
+  animation: forcefield-critical-pulse 0.8s ease-in-out infinite;
+}
+@keyframes forcefield-critical-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.forcefield-emoji {
+  position: relative;
+  z-index: 1;
+  line-height: 1;
+}
+
+.forcefield-avatar.hit-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+/* the zap that flashes between avatars the instant an attack resolves */
+.zap-bolt {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  font-size: 48px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+.zap-bolt.zap-active {
+  animation: zap-flash 0.5s ease-out;
+}
+@keyframes zap-flash {
+  0% { transform: translate(-50%, -50%) scale(0.3) rotate(-15deg); opacity: 0; }
+  30% { transform: translate(-50%, -50%) scale(1.4) rotate(10deg); opacity: 1; }
+  60% { transform: translate(-50%, -50%) scale(1) rotate(-6deg); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(0.8) rotate(0deg); opacity: 0; }
+}
+
