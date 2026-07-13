@@ -205,32 +205,57 @@ players finish, a 60-second countdown starts so the rest of the class
 still gets a defined end point rather than waiting on stragglers.
 
 **🔥 Firewall Duel** — the host continuously pairs up waiting players into
-1-on-1 duels. Both players in a duel get the *same* random question at
-the same time, but with a fixed **8-second** timer regardless of what the
-quiz's own questions are set to — duels are meant to feel like a fast
-reflex showdown, not a full-length quiz question, and a short timer also
-means duels resolve (and players requeue into a fresh one) quickly rather
-than everyone waiting around. Whoever answers correctly and faster deals
-damage to the other's firewall (both correct → the faster one lands the
-hit; both wrong → nothing happens). A firewall broken down to 0% instantly
-reboots to 100%, and the opponent banks a win. Both players immediately
-requeue for a fresh opponent — nobody sits out. The leaderboard ranks by
-wins, tie-broken by total breaches dealt. Damage-per-hit uses the same
-speed-decay shape as classic scoring, just rescaled (`calculateDuelDamage`
-in `js/scoring.js`) so a firewall takes roughly 3–5 solid hits to break.
-The 8-second cap lives in `DUEL_TIME_LIMIT_SECONDS` near the top of the
-Firewall Duel section in `js/host.js` if you want to tune it.
+1-on-1 duels. Each duel is a **3-question batch**: both players get the
+*same* 3 random questions, and answer them independently at their own
+pace (same self-paced rhythm as everywhere else), each with a fixed
+**8-second** timer regardless of what the quiz's own questions are set
+to. A player who finishes their 3 before their opponent sees a "waiting
+for your opponent to finish" screen — the battle can't resolve until
+both have answered all 3.
+
+**Scoring is money, not points** (`p.score` is money here, same as
+Asteroid Defense — the leaderboard just shows it directly, no separate
+"wins" ranking). Once both duelists finish their batch, the host walks
+through the 3 questions **in order** (`resolveDuelBattle()` in
+`js/host.js`):
+- Anyone who answered a question correctly earns money for their own
+  speed, independent of their opponent.
+- Whoever answered correctly **and faster** on that question also chips
+  a flat **20%** off the opponent's shield — so sweeping all 3 takes
+  60% off, exactly like a 3-hit combo.
+- The instant a shield hits 0%, the breaker **steals 15% of the broken
+  player's money — as it stood at that exact point in the sequence**,
+  not their eventual end-of-battle total. The shield then **refreshes
+  to 100% immediately and the same battle keeps going** on the
+  remaining questions — it doesn't wait for a new matchup, and it can
+  break more than once in a single battle if the remaining questions go
+  badly enough.
+
+Both players requeue for a fresh opponent once the battle ends — nobody
+sits out. `DUEL_QUESTIONS_PER_BATCH`, `DUEL_TIME_LIMIT_SECONDS`,
+`DUEL_SHIELD_DAMAGE_PCT` (20), and `DUEL_STEAL_FRACTION` (0.15) are all
+named constants near the top of the Firewall Duel section in
+`js/host.js` if you want to retune any of them.
 
 **Visuals:** each player's avatar shows inside a glowing circular
 "force field" ring whose arc-length and glow strength represent their
-current firewall % — bright and full at 100%, thinner and dimmer as it
+current shield % — bright and full at 100%, thinner and dimmer as it
 drains, pulsing red once it drops below 20%, with a rotating electric
 crackle texture behind it for a more "fluro/energized" feel
 (`renderForcefieldAvatar()` in `js/utils.js`, shared by both the host
-and student screens so they match). The instant an attack resolves, a
-⚡ zap flashes between the two avatars and whichever one took damage
-gets a quick shake — both on the student's own battle screen and on the
-host's live scoreboard/pairing list.
+and student screens so they match). Individual questions within a batch
+get a quick, light correct/incorrect reveal with no numbers shown yet —
+since the money/shield outcome depends on comparing both players'
+answers, it isn't known until the whole battle resolves. Once both
+duelists finish their 3, a **separate full-screen battle screen**
+plays instead — bigger avatars, a ⚡ that visibly travels across the
+screen from whoever landed the net hit to whoever took it, a floating
+"-60%"-style shield number, and — when a shield actually broke — a
+distinct gold **"-$X" stolen-money number that floats up from whoever
+it was taken from over about a second**, separate from the shield
+number (`showDuelBattleCinematic()` in `js/join.js`). The host's live
+scoreboard and pairing list use the same force-field avatars too, so
+the whole screen matches.
 
 Every 3rd duel result, instead of the quick inline reveal, a player sees
 a full-screen battle cinematic instead: bigger force-field avatars, a ⚡

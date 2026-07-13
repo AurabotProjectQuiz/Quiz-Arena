@@ -38,8 +38,10 @@ let currentDuelId = null;
 let myFirewall = 100;
 let currentDuelOpponentEmoji = '🤖';
 let currentDuelOpponentName = 'Opponent';
-let duelResultCounter = 0; // every 3rd result gets the big full-screen cinematic
-const DUEL_CINEMATIC_EVERY = 3;
+let duelQuestions = [];       // this duel's 3-question batch
+let duelQuestionIndex = -1;
+let duelBatchScore = 0;
+const DUEL_QUESTIONS_PER_BATCH = 3;
 
 // Asteroid Defense state — the actual mini-game lives in
 // js/asteroidsGame.js; this is just the shop/wave pacing around it.
@@ -56,7 +58,7 @@ const ASTEROIDS_DEFENSE_SECONDS = 10;
 const OPTION_CLASSES = ['opt-a', 'opt-b', 'opt-c', 'opt-d'];
 const CIRCUMFERENCE = 2 * Math.PI * 34;
 
-const screens = ['join', 'waiting', 'rules', 'question', 'reveal', 'round-result', 'duel-battle', 'duel-searching', 'board-update', 'asteroids-shop', 'asteroids-defense', 'done', 'final'];
+const screens = ['join', 'waiting', 'rules', 'question', 'reveal', 'round-result', 'duel-battle', 'duel-searching', 'duel-waiting', 'board-update', 'asteroids-shop', 'asteroids-defense', 'done', 'final'];
 function showScreen(name) {
   for (const s of screens) {
     $(`#screen-${s}`).hidden = s !== name;
@@ -146,6 +148,7 @@ async function joinGame() {
   channel.on('broadcast', { event: 'answer_result' }, ({ payload }) => onAnswerResult(payload));
   channel.on('broadcast', { event: 'round_result' }, ({ payload }) => onRoundResult(payload));
   channel.on('broadcast', { event: 'duel_start' }, ({ payload }) => onDuelStart(payload));
+  channel.on('broadcast', { event: 'duel_question_result' }, ({ payload }) => onDuelQuestionResult(payload));
   channel.on('broadcast', { event: 'duel_result' }, ({ payload }) => onDuelResult(payload));
   channel.on('broadcast', { event: 'game_over' }, ({ payload }) => onGameOver(payload));
 
@@ -189,9 +192,10 @@ const MODE_RULES = {
   duel: {
     title: '🔥 Firewall Duel',
     body: [
-      "You'll be matched against another player for a quick 1-on-1.",
-      'Answer correctly and fast to damage their firewall.',
-      "Break their firewall to win the round — then you'll get a new opponent!",
+      "You'll be matched against another player for a 3-question battle.",
+      'Answer correctly and fast to earn money — and if you answer faster than your opponent, you chip 20% off their shield!',
+      'Fully deplete their shield and you steal 15% of their money — their shield instantly refreshes and the battle continues.',
+      "See the full battle play out on a big screen once you've both finished your 3, then you'll get a new opponent.",
     ],
   },
   outbreak: {
@@ -254,7 +258,6 @@ function beginGameForMode(payload) {
 
   if (gameMode === 'duel') {
     myFirewall = 100;
-    duelResultCounter = 0;
     enterDuelSearching();
     return;
   }
@@ -385,7 +388,10 @@ function submitAnswer(optionId) {
 
   const timeTakenMs = performance.now() - questionStartClientTime;
   const payload = { playerId, questionId: currentQuestion.id, optionId, timeTakenMs };
-  if (gameMode === 'duel') payload.duelId = currentDuelId;
+  if (gameMode === 'duel') {
+    payload.duelId = currentDuelId;
+    payload.questionIndex = duelQuestionIndex;
+  }
 
   channel.send({ type: 'broadcast', event: 'answer', payload });
 
@@ -394,7 +400,7 @@ function submitAnswer(optionId) {
   // on an opponent too, so they get a longer grace period tied to the
   // question's own time limit rather than a flat 4s.
   if (gameMode === 'duel') {
-    advanceTimeout = setTimeout(() => enterDuelSearching(), currentQuestion.timeLimitSeconds * 1000 + 6000);
+    advanceTimeout = setTimeout(() => proceedAfterDuelQuestion(), currentQuestion.timeLimitSeconds * 1000 + 6000);
   } else if (gameMode === 'board') {
     advanceTimeout = setTimeout(() => {
       if (roundIndex + 1 < roundQueue.length) {
@@ -605,11 +611,20 @@ function onDuelStart(payload) {
   $('#duel-opponent-name').textContent = opponent.name;
   $('#duel-header').hidden = false;
 
-  currentQuestion = { ...payload.question, options: shuffle(payload.question.options) };
+  duelQuestions = payload.questions.map((q) => ({ ...q, options: shuffle(q.options) }));
+  duelQuestionIndex = -1;
+  duelBatchScore = 0;
+
+  showNextDuelQuestion();
+}
+
+function showNextDuelQuestion() {
+  duelQuestionIndex++;
+  currentQuestion = duelQuestions[duelQuestionIndex];
   answered = false;
   questionStartClientTime = performance.now();
 
-  $('#progress-label').textContent = `⚡ Duel vs ${opponent.name}`;
+  $('#progress-label').textContent = `⚡ Duel Q${duelQuestionIndex + 1}/${DUEL_QUESTIONS_PER_BATCH} vs ${currentDuelOpponentName}`;
   $('#player-question-text').textContent = currentQuestion.text;
 
   const grid = $('#player-options-grid');
@@ -630,6 +645,42 @@ function onDuelStart(payload) {
   });
 }
 
+// Per-question feedback within the 3-question batch — quick and light,
+// like classic mode. The big force-field battle cinematic only shows
+// once, after both duelists have finished their whole batch.
+function onDuelQuestionResult(payload) {
+  if (payload.duelId !== currentDuelId || payload.questionIndex !== duelQuestionIndex) return; // stale
+  clearTimeout(advanceTimeout);
+
+  // Money and shield outcomes depend on your opponent's answer to this
+  // same question too, so they're not known yet — that all gets settled
+  // (and shown) in the big battle screen once you've both finished.
+  const banner = $('#reveal-banner');
+  if (payload.correct) {
+    banner.textContent = 'Correct! ✅';
+    banner.className = 'reveal-banner correct';
+    $('#points-earned').textContent = '';
+  } else {
+    banner.textContent = 'Not quite ❌';
+    banner.className = 'reveal-banner incorrect';
+    $('#points-earned').textContent = '';
+  }
+  $('#score-label').textContent = `Question ${duelQuestionIndex + 1} of ${DUEL_QUESTIONS_PER_BATCH}`;
+  $('#my-total-score').textContent = payload.correct ? '✅' : '❌';
+
+  flashRevealScreen(payload.correct);
+  showScreen('reveal');
+  setTimeout(() => proceedAfterDuelQuestion(), 1300);
+}
+
+function proceedAfterDuelQuestion() {
+  if (duelQuestionIndex + 1 >= DUEL_QUESTIONS_PER_BATCH) {
+    enterDuelWaitingForOpponent();
+  } else {
+    showNextDuelQuestion();
+  }
+}
+
 function onDuelResult(payload) {
   if (payload.duelId !== currentDuelId) return; // stale — already moved on
   const mine = payload.results[playerId];
@@ -639,72 +690,11 @@ function onDuelResult(payload) {
 
   clearTimeout(advanceTimeout);
   myFirewall = mine.firewall;
-  duelResultCounter += 1;
-
-  if (duelResultCounter % DUEL_CINEMATIC_EVERY === 0) {
-    showDuelBattleCinematic(mine, theirs);
-    return;
-  }
-
-  const banner = $('#reveal-banner');
-  let outcome = null; // true = positive flash, false = negative flash, null = no flash (a wash)
-  if (mine.opponentBroken) {
-    banner.textContent = 'Firewall breached! You win this one 🏆';
-    banner.className = 'reveal-banner correct';
-    outcome = true;
-  } else if (mine.broken) {
-    banner.textContent = 'Your firewall was breached! 😵';
-    banner.className = 'reveal-banner incorrect';
-    outcome = false;
-  } else if (mine.yourDamageDealt > 0) {
-    banner.textContent = `Direct hit — ${mine.yourDamageDealt} damage! ⚡`;
-    banner.className = 'reveal-banner correct';
-    outcome = true;
-  } else if (mine.damageTaken > 0) {
-    banner.textContent = `Took ${mine.damageTaken} damage! 🛡️`;
-    banner.className = 'reveal-banner incorrect';
-    outcome = false;
-  } else {
-    banner.textContent = 'Both firewalls held ⚡';
-    banner.className = 'reveal-banner';
-  }
-  $('#points-earned').textContent = mine.broken ? 'Firewall rebooted to 100%' : `Firewall: ${mine.firewall}%`;
-
-  $('#score-label').textContent = 'Your firewall';
-  $('#my-total-score').textContent = `${myFirewall}%`;
-
-  // Force-field avatars + a zap flash the instant the attack lands, so
-  // the result reads as an actual hit rather than just changed numbers.
-  $('#duel-reveal-avatars').hidden = false;
-  $('#duel-reveal-my-avatar').innerHTML = renderForcefieldAvatar(playerEmoji, mine.firewall, 64);
-  $('#duel-reveal-opp-avatar').innerHTML = renderForcefieldAvatar(currentDuelOpponentEmoji, theirs ? theirs.firewall : 100, 64);
-  $('#duel-reveal-opp-name').textContent = currentDuelOpponentName;
-
-  const zapBolt = $('#zap-bolt');
-  zapBolt.classList.remove('zap-active');
-  void zapBolt.offsetWidth; // force reflow so the animation replays every time
-  const myAvatarEl = $('#duel-reveal-my-avatar').querySelector('.forcefield-avatar');
-  const oppAvatarEl = $('#duel-reveal-opp-avatar').querySelector('.forcefield-avatar');
-  myAvatarEl?.classList.remove('hit-shake');
-  oppAvatarEl?.classList.remove('hit-shake');
-  if (mine.damageTaken > 0 || mine.yourDamageDealt > 0) {
-    zapBolt.classList.add('zap-active');
-    void myAvatarEl?.offsetWidth;
-    if (mine.damageTaken > 0) myAvatarEl?.classList.add('hit-shake');
-    if (mine.yourDamageDealt > 0) oppAvatarEl?.classList.add('hit-shake');
-  }
-
-  if (outcome !== null) flashRevealScreen(outcome);
-  showScreen('reveal');
-  setTimeout(() => {
-    if (gameEnded) return;
-    enterDuelSearching();
-  }, 1800);
+  showDuelBattleCinematic(mine, theirs);
 }
 
-// The big, dramatic version — shown every 3rd duel result instead of the
-// quick inline reveal, so the full-screen spectacle doesn't get old from
-// showing up after every single ~8-second exchange.
+// The big, dramatic full-screen result — shown once per 3-question
+// battle, after both duelists have finished their whole batch.
 function showDuelBattleCinematic(mine, theirs) {
   const oppFirewall = theirs ? theirs.firewall : 100;
   $('#duel-battle-my-avatar').innerHTML = renderForcefieldAvatar(playerEmoji, mine.firewall, 120);
@@ -712,25 +702,25 @@ function showDuelBattleCinematic(mine, theirs) {
   $('#duel-battle-opp-name').textContent = currentDuelOpponentName;
 
   const banner = $('#duel-battle-banner');
-  if (mine.opponentBroken) {
-    banner.textContent = 'Firewall breached! You win this one 🏆';
+  if (mine.moneyStolen > 0) {
+    banner.textContent = `Shield destroyed! Stole $${mine.moneyStolen} 💰`;
     banner.className = 'duel-battle-banner correct';
-  } else if (mine.broken) {
-    banner.textContent = 'Your firewall was breached! 😵';
+  } else if (mine.moneyLost > 0) {
+    banner.textContent = `Your shield was destroyed! Lost $${mine.moneyLost} 😵`;
     banner.className = 'duel-battle-banner incorrect';
-  } else if (mine.yourDamageDealt > 0) {
-    banner.textContent = `Direct hit — ${mine.yourDamageDealt} damage!`;
+  } else if (mine.yourDamageDealt > 0 && mine.yourDamageDealt >= mine.damageTaken) {
+    banner.textContent = `Chipped ${mine.yourDamageDealt}% off their shield!`;
     banner.className = 'duel-battle-banner correct';
   } else if (mine.damageTaken > 0) {
-    banner.textContent = `Took ${mine.damageTaken} damage!`;
+    banner.textContent = `Lost ${mine.damageTaken}% shield!`;
     banner.className = 'duel-battle-banner incorrect';
   } else {
-    banner.textContent = 'Both firewalls held ⚡';
+    banner.textContent = 'Shields held steady ⚡';
     banner.className = 'duel-battle-banner';
   }
 
-  // Zap travels from whoever landed the hit toward whoever took it — "my"
-  // avatar sits on the left of the stage, opponent on the right.
+  // Zap travels from whoever landed the (net) hit toward whoever took it
+  // — "my" avatar sits on the left of the stage, opponent on the right.
   const zapBolt = $('#duel-battle-zap');
   zapBolt.classList.remove('zap-fire-right', 'zap-fire-left');
   void zapBolt.offsetWidth; // force reflow so the animation replays every time
@@ -742,19 +732,29 @@ function showDuelBattleCinematic(mine, theirs) {
   clearFloatingDamage(myAvatarEl);
   clearFloatingDamage(oppAvatarEl);
 
-  if (mine.yourDamageDealt > 0) {
+  if (mine.yourDamageDealt >= mine.damageTaken && mine.yourDamageDealt > 0) {
     zapBolt.classList.add('zap-fire-right');
     void oppAvatarEl?.offsetWidth;
     oppAvatarEl?.classList.add('hit-shake');
-    spawnFloatingDamage(oppAvatarEl, `-${mine.yourDamageDealt}`, 'damage');
+    spawnFloatingDamage(oppAvatarEl, `-${mine.yourDamageDealt}%`, 'damage');
   } else if (mine.damageTaken > 0) {
     zapBolt.classList.add('zap-fire-left');
     void myAvatarEl?.offsetWidth;
     myAvatarEl?.classList.add('hit-shake');
-    spawnFloatingDamage(myAvatarEl, `-${mine.damageTaken}`, 'damage');
+    spawnFloatingDamage(myAvatarEl, `-${mine.damageTaken}%`, 'damage');
+  }
+
+  // Stolen money floats up from whoever it was taken from — separate
+  // from the shield-damage number, money-colored, ~1 second.
+  if (mine.moneyStolen > 0) {
+    spawnFloatingMoneyLoss(oppAvatarEl, `-$${mine.moneyStolen}`);
+  }
+  if (mine.moneyLost > 0) {
+    spawnFloatingMoneyLoss(myAvatarEl, `-$${mine.moneyLost}`);
   }
 
   showScreen('duel-battle');
+  $('#duel-battle-scores').textContent = `Your money: $${mine.totalScore}`;
   setTimeout(() => {
     if (gameEnded) return;
     enterDuelSearching();
@@ -770,6 +770,15 @@ function spawnFloatingDamage(anchorEl, text, kind) {
   el.addEventListener('animationend', () => el.remove());
 }
 
+function spawnFloatingMoneyLoss(anchorEl, text) {
+  if (!anchorEl) return;
+  const el = document.createElement('div');
+  el.className = 'floating-money-loss';
+  el.textContent = text;
+  anchorEl.appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+}
+
 function clearFloatingDamage(anchorEl) {
   anchorEl?.querySelectorAll('.floating-damage').forEach((el) => el.remove());
 }
@@ -778,6 +787,15 @@ function enterDuelSearching() {
   currentDuelId = null;
   $('#duel-searching-firewall').textContent = `${myFirewall}%`;
   showScreen('duel-searching');
+}
+
+// Shown when this player has finished all 3 questions in their batch
+// but the opponent hasn't yet — the battle can't resolve until both
+// have. onDuelResult (via showDuelBattleCinematic) takes over from here
+// the moment the opponent finishes too.
+function enterDuelWaitingForOpponent() {
+  $('#duel-waiting-firewall').textContent = `${myFirewall}%`;
+  showScreen('duel-waiting');
 }
 
 // Renders the same compact grid style the host screen uses, from the

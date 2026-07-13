@@ -84,17 +84,6 @@
 
   <!-- STEP 4: instant per-question feedback, then auto-advance -->
   <section id="screen-reveal" class="screen" hidden>
-    <div id="duel-reveal-avatars" class="duel-vs-header" style="position:relative;" hidden>
-      <div class="duel-vs-side">
-        <div id="duel-reveal-my-avatar"></div>
-        <span class="duel-vs-name">You</span>
-      </div>
-      <div class="zap-bolt" id="zap-bolt">⚡</div>
-      <div class="duel-vs-side">
-        <div id="duel-reveal-opp-avatar"></div>
-        <span class="duel-vs-name" id="duel-reveal-opp-name">Opponent</span>
-      </div>
-    </div>
     <div class="reveal-banner" id="reveal-banner"></div>
     <div class="points-earned" id="points-earned"></div>
     <div class="card center-text" style="max-width:300px;">
@@ -103,7 +92,7 @@
     </div>
   </section>
 
-  <!-- STEP 4b2: Firewall Duel — full-screen battle cinematic (every 3rd duel) -->
+  <!-- STEP 4b2: Firewall Duel — full-screen battle cinematic, once per 3-question batch -->
   <section id="screen-duel-battle" class="screen" hidden>
     <span class="eyebrow">⚡ Battle report</span>
     <div class="duel-battle-stage">
@@ -120,9 +109,20 @@
       </div>
     </div>
     <div class="duel-battle-banner" id="duel-battle-banner"></div>
+    <p class="center-text" id="duel-battle-scores" style="color:var(--text-faint);font-size:13px;"></p>
   </section>
 
-  <!-- STEP 4c: Firewall Duel — searching for the next opponent -->
+  <!-- STEP 4c: Firewall Duel — waiting for the opponent to finish their 3 questions -->
+  <section id="screen-duel-waiting" class="screen" hidden>
+    <span class="eyebrow">🔥 Firewall Duel</span>
+    <h2 class="display" style="font-size:20px;">⏳ Waiting for your opponent to finish…</h2>
+    <div class="card center-text" style="max-width:300px;">
+      <span class="eyebrow">Your firewall</span>
+      <div class="display" style="font-size:36px;color:var(--lime);" id="duel-waiting-firewall">100%</div>
+    </div>
+  </section>
+
+  <!-- STEP 4d: Firewall Duel — searching for the next opponent -->
   <section id="screen-duel-searching" class="screen" hidden>
     <span class="eyebrow">🔥 Firewall Duel</span>
     <div class="radar">
