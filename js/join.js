@@ -598,6 +598,11 @@ function maybeShowRoundResult() {
 function onDuelStart(payload) {
   if (!payload.players[playerId]) return; // this pairing isn't for me
 
+  // duel_start bypasses the normal "dismiss rules screen" flow
+  // (proceedPastRules) entirely, so make sure that screen's auto-dismiss
+  // timer can never fire later and clobber an in-progress battle.
+  clearTimeout(rulesAutoTimeout);
+
   currentDuelId = payload.duelId;
   const opponentId = Object.keys(payload.players).find((id) => id !== playerId);
   const opponent = payload.players[opponentId];
