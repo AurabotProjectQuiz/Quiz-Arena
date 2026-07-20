@@ -7,10 +7,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/style.css" />
-  <!-- Renders emoji consistently (Windows 11's Fluent Emoji style) on every
-       OS, instead of each device's own native emoji font — see
-       enableConsistentEmoji() in js/utils.js -->
-  <script src="https://emoji.fluent-cdn.com/latest/fluentemoji.min.js" crossorigin="anonymous"></script>
+  <!-- Renders emoji consistently on every OS, instead of each device's own
+       native emoji font — see enableConsistentEmoji() in js/utils.js.
+       Twemoji, hosted on jsDelivr (reliable, well-established CDN). -->
+  <script src="https://cdn.jsdelivr.net/npm/@twemoji/api@latest/dist/twemoji.min.js" crossorigin="anonymous"></script>
 </head>
 <body>
 
@@ -57,17 +57,6 @@
 
   <!-- STEP 3: live question — each player works through their own shuffled order -->
   <section id="screen-question" class="screen" hidden>
-    <div id="duel-header" class="duel-vs-header" hidden>
-      <div class="duel-vs-side">
-        <div id="duel-my-avatar"></div>
-        <span class="duel-vs-name">You</span>
-      </div>
-      <span class="duel-vs-label">⚡VS⚡</span>
-      <div class="duel-vs-side">
-        <div id="duel-opponent-avatar"></div>
-        <span class="duel-vs-name" id="duel-opponent-name">Opponent</span>
-      </div>
-    </div>
     <div class="timer-ring" id="timer-ring">
       <svg viewBox="0 0 80 80">
         <circle class="track" cx="40" cy="40" r="34"></circle>

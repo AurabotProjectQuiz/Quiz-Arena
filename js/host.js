@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient.js';
-import { calculateScore, rankPlayers, calculateSpeedFraction, calculateMoney, OUTBREAK_CHAIN_BONUS, MAX_POINTS, MIN_DUEL_DAMAGE, MAX_DUEL_DAMAGE } from './scoring.js';
+import { calculateScore, rankPlayers, calculateSpeedFraction, calculateMoney, calculateDuelMoney, OUTBREAK_CHAIN_BONUS } from './scoring.js';
 import { generateJoinCode, escapeHtml, shuffle, launchConfetti, enableConsistentEmoji, renderForcefieldAvatar, $ } from './utils.js';
 import { requireRole } from './authGuard.js';
 import { BOARD_SIZE, ESCALATORS, EELS } from './boardConfig.js';
@@ -289,19 +289,19 @@ function startDemoAnswering() {
     if (gameMode === 'duel') {
       // Bots can only "answer" while they're actually paired in a live
       // duel and still have questions left in their batch — matchmaking
-      // and the batch-progress tracking handle the rest.
+      // and the answeredCount tracking handle the rest.
       const waitingBots = [];
       for (const duel of Object.values(activeDuels)) {
         if (duel.resolved) continue;
         for (const pid of duel.players) {
-          if (players[pid]?.isDemo && duel.progress[pid].answered < DUEL_QUESTIONS_PER_BATCH) {
+          if (players[pid]?.isDemo && duel.answeredCount[pid] < DUEL_QUESTIONS_PER_BATCH) {
             waitingBots.push({ pid, duel });
           }
         }
       }
       if (waitingBots.length === 0) return;
       const { pid, duel } = waitingBots[Math.floor(Math.random() * waitingBots.length)];
-      const questionIndex = duel.progress[pid].answered;
+      const questionIndex = duel.answeredCount[pid];
       const question = duel.questions[questionIndex];
       const willBeCorrect = Math.random() < 0.7;
       const wrongOption = question.options.find((o) => o.id !== question.correct_option_id);
@@ -646,6 +646,10 @@ function resolveDuelBattle(duelId) {
 
   let totalDamageToA = 0;
   let totalDamageToB = 0;
+  let aAttacksWon = 0;
+  let bAttacksWon = 0;
+  let aMoneyEarned = 0; // money A made THIS battle, independent of who wins each attack
+  let bMoneyEarned = 0;
   let aBrokeAtLeastOnce = false;
   let bBrokeAtLeastOnce = false;
   let aStolenTotal = 0; // money A stole from B, across the whole battle
@@ -658,15 +662,24 @@ function resolveDuelBattle(duelId) {
     const aCorrect = !!aAns && aAns.optionId === q.correct_option_id;
     const bCorrect = !!bAns && bAns.optionId === q.correct_option_id;
 
-    if (aCorrect) a.score += calculateMoney(true, aAns.timeTakenMs, duel.timeLimitSeconds);
-    if (bCorrect) b.score += calculateMoney(true, bAns.timeTakenMs, duel.timeLimitSeconds);
+    if (aCorrect) {
+      const money = calculateDuelMoney(aAns.timeTakenMs, duel.timeLimitSeconds);
+      a.score += money;
+      aMoneyEarned += money;
+    }
+    if (bCorrect) {
+      const money = calculateDuelMoney(bAns.timeTakenMs, duel.timeLimitSeconds);
+      b.score += money;
+      bMoneyEarned += money;
+    }
 
-    let winner = null; // whoever answered this one correctly and fastest
+    let winner = null; // whoever answered this one correctly and fastest — first wins the attack
     if (aCorrect && bCorrect) winner = aAns.timeTakenMs <= bAns.timeTakenMs ? 'a' : 'b';
     else if (aCorrect) winner = 'a';
     else if (bCorrect) winner = 'b';
 
     if (winner === 'a') {
+      aAttacksWon += 1;
       const damage = Math.min(DUEL_SHIELD_DAMAGE_PCT, b.firewall);
       b.firewall -= damage;
       totalDamageToB += damage;
@@ -681,6 +694,7 @@ function resolveDuelBattle(duelId) {
         b.firewall = 100; // fully depleted — refreshes immediately, battle continues
       }
     } else if (winner === 'b') {
+      bAttacksWon += 1;
       const damage = Math.min(DUEL_SHIELD_DAMAGE_PCT, a.firewall);
       a.firewall -= damage;
       totalDamageToA += damage;
@@ -703,8 +717,34 @@ function resolveDuelBattle(duelId) {
     payload: {
       duelId,
       results: {
-        [aId]: { yourDamageDealt: totalDamageToB, damageTaken: totalDamageToA, firewall: a.firewall, broken: aBrokeAtLeastOnce, opponentBroken: bBrokeAtLeastOnce, moneyStolen: aStolenTotal, moneyLost: bStolenTotal, totalScore: a.score },
-        [bId]: { yourDamageDealt: totalDamageToA, damageTaken: totalDamageToB, firewall: b.firewall, broken: bBrokeAtLeastOnce, opponentBroken: aBrokeAtLeastOnce, moneyStolen: bStolenTotal, moneyLost: aStolenTotal, totalScore: b.score },
+        [aId]: {
+          yourAttacksWon: aAttacksWon,
+          opponentAttacksWon: bAttacksWon,
+          yourDamageDealt: totalDamageToB,
+          damageTaken: totalDamageToA,
+          yourMoneyEarned: aMoneyEarned,
+          opponentMoneyEarned: bMoneyEarned,
+          firewall: a.firewall,
+          broken: aBrokeAtLeastOnce,
+          opponentBroken: bBrokeAtLeastOnce,
+          moneyStolen: aStolenTotal,
+          moneyLost: bStolenTotal,
+          totalScore: a.score,
+        },
+        [bId]: {
+          yourAttacksWon: bAttacksWon,
+          opponentAttacksWon: aAttacksWon,
+          yourDamageDealt: totalDamageToA,
+          damageTaken: totalDamageToB,
+          yourMoneyEarned: bMoneyEarned,
+          opponentMoneyEarned: aMoneyEarned,
+          firewall: b.firewall,
+          broken: bBrokeAtLeastOnce,
+          opponentBroken: aBrokeAtLeastOnce,
+          moneyStolen: bStolenTotal,
+          moneyLost: aStolenTotal,
+          totalScore: b.score,
+        },
       },
     },
   });

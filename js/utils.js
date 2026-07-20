@@ -97,12 +97,18 @@ export function renderForcefieldAvatar(emoji, firewallPercent, sizePx = 64) {
 //
 // The SAME emoji character (e.g. 🦖) renders differently on every OS,
 // because there's no image — each device's own emoji font decides how
-// to draw it (Windows 11 uses Microsoft's "Fluent Emoji" set, which
-// tends to look more polished/cute than macOS's or older Windows'
-// built-in sets). To make it look the same — and use the nicer style —
-// everywhere, this loads a small library (from a CDN, added as a
+// to draw it. To make it look the same everywhere, this loads a small
+// library (Twemoji, from jsDelivr — a major, reliable CDN, added as a
 // <script> tag in each page's <head>) that scans the page and replaces
-// Unicode emoji characters with actual Fluent Emoji images.
+// Unicode emoji characters with actual images.
+//
+// (This used to load Microsoft's Fluent Emoji style from a smaller,
+// independent CDN, which looked closer to Windows 11's native emoji —
+// but that CDN started returning 403 errors, so it's been swapped for
+// Twemoji's flat cartoon style, which is hosted somewhere far more
+// dependable. To switch providers again later, this function plus the
+// <script> tag in host.html/join.html are the only two places that
+// need to change.)
 //
 // Since this app re-renders things like the leaderboard or roster
 // constantly, a one-time pass on page load isn't enough — a
@@ -116,12 +122,12 @@ export function renderForcefieldAvatar(emoji, firewallPercent, sizePx = 64) {
 // native rendering — nothing else in the app depends on this working.
 // ------------------------------------------------------------
 export function enableConsistentEmoji() {
-  if (typeof window === 'undefined' || !window.fluentemoji) {
-    console.warn('Fluent Emoji library not loaded — emoji will use each device\'s native style instead.');
+  if (typeof window === 'undefined' || !window.twemoji) {
+    console.warn('Twemoji library not loaded — emoji will use each device\'s native style instead.');
     return;
   }
 
-  const parseAll = () => window.fluentemoji.parse(document.body, { className: 'fluent-emoji-img' });
+  const parseAll = () => window.twemoji.parse(document.body, { className: 'fluent-emoji-img' });
   parseAll();
 
   let debounceHandle = null;

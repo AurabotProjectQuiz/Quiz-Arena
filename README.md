@@ -207,29 +207,35 @@ still gets a defined end point rather than waiting on stragglers.
 **🔥 Firewall Duel** — the host continuously pairs up waiting players into
 1-on-1 duels. Each duel is a **3-question batch**: both players get the
 *same* 3 random questions, and answer them independently at their own
-pace (same self-paced rhythm as everywhere else), each with a fixed
-**8-second** timer regardless of what the quiz's own questions are set
-to. A player who finishes their 3 before their opponent sees a "waiting
-for your opponent to finish" screen — the battle can't resolve until
-both have answered all 3.
+pace, blind — **you don't see either shield while answering**, only a
+quick correct/incorrect ping after each question, since the real outcome
+depends on comparing both players' answers and isn't known until you've
+both finished. A fixed **8-second** timer applies to each question
+regardless of what the quiz's own questions are set to. A player who
+finishes their 3 before their opponent sees a "waiting for your opponent
+to finish" screen — the battle can't resolve until both have answered
+all 3.
 
-**Scoring is money, not points** (`p.score` is money here, same as
-Asteroid Defense — the leaderboard just shows it directly, no separate
-"wins" ranking). Once both duelists finish their batch, the host walks
-through the 3 questions **in order** (`resolveDuelBattle()` in
-`js/host.js`):
+**Scoring is money, not points** (`p.score` is money here, same idea as
+Asteroid Defense but capped lower — up to **$100 per correct answer**,
+`calculateDuelMoney()` in `js/scoring.js` — the leaderboard shows it
+directly). Once both duelists finish their batch, the host walks through
+the 3 questions **in order** (`resolveDuelBattle()` in `js/host.js`):
 - Anyone who answered a question correctly earns money for their own
   speed, independent of their opponent.
-- Whoever answered correctly **and faster** on that question also chips
-  a flat **20%** off the opponent's shield — so sweeping all 3 takes
-  60% off, exactly like a 3-hit combo.
+- Whoever answered correctly **and faster** on that question wins that
+  question's "attack" and chips a flat **20%** off the opponent's
+  shield — so winning all 3 takes 60% off, like a 3-hit combo. (If the
+  faster answer was wrong, the other player wins the attack instead, as
+  long as they were correct.)
 - The instant a shield hits 0%, the breaker **steals 15% of the broken
   player's money — as it stood at that exact point in the sequence**,
   not their eventual end-of-battle total. The shield then **refreshes
   to 100% immediately and the same battle keeps going** on the
   remaining questions — it doesn't wait for a new matchup, and it can
   break more than once in a single battle if the remaining questions go
-  badly enough.
+  badly enough. Outside of a break, shield level always **carries over**
+  into a player's next matchup.
 
 Both players requeue for a fresh opponent once the battle ends — nobody
 sits out. `DUEL_QUESTIONS_PER_BATCH`, `DUEL_TIME_LIMIT_SECONDS`,
@@ -243,30 +249,19 @@ current shield % — bright and full at 100%, thinner and dimmer as it
 drains, pulsing red once it drops below 20%, with a rotating electric
 crackle texture behind it for a more "fluro/energized" feel
 (`renderForcefieldAvatar()` in `js/utils.js`, shared by both the host
-and student screens so they match). Individual questions within a batch
-get a quick, light correct/incorrect reveal with no numbers shown yet —
-since the money/shield outcome depends on comparing both players'
-answers, it isn't known until the whole battle resolves. Once both
-duelists finish their 3, a **separate full-screen battle screen**
-plays instead — bigger avatars, a ⚡ that visibly travels across the
-screen from whoever landed the net hit to whoever took it, a floating
-"-60%"-style shield number, and — when a shield actually broke — a
-distinct gold **"-$X" stolen-money number that floats up from whoever
-it was taken from over about a second**, separate from the shield
-number (`showDuelBattleCinematic()` in `js/join.js`). The host's live
-scoreboard and pairing list use the same force-field avatars too, so
-the whole screen matches.
+and student screens so they match).
 
-Every 3rd duel result, instead of the quick inline reveal, a player sees
-a full-screen battle cinematic instead: bigger force-field avatars, a ⚡
-that visibly travels across the screen from whoever landed the hit to
-whoever took it, and a floating "-340"-style damage number that pops up
-and fades, RPG-style (`showDuelBattleCinematic()` in `js/join.js`). The
-underlying duel mechanic is unchanged — every duel still resolves after
-one question — this is purely about not showing the big spectacle after
-every single ~8-second exchange, which would get repetitive fast.
-`DUEL_CINEMATIC_EVERY` near the top of `js/join.js` controls that
-frequency if 3 doesn't feel right once you've tried it.
+Once both duelists finish their 3 questions, a **separate full-screen
+battle screen** plays as a two-act sequence
+(`showDuelBattleCinematic()` in `js/join.js`) — no question UI, just
+both avatars: first "You won N attacks!" with N strike (⚡) animations
+firing in a row, a floating "-40%"-style shield number, and a floating
+lime "+$X" for the money you earned; then the same beats play out for
+the opponent's attacks. If a shield actually broke during either act, a
+distinct gold **"-$X" stolen-money number floats up from whoever it was
+taken from** over about a second, on top of the shield number. The
+host's live scoreboard and pairing list use the same force-field
+avatars too, so the whole screen matches.
 
 **🦠 Outbreak: Antivirus Grid** — one shared 8×8 grid (64 nodes) lives on
 the host screen only — students don't need to see it, they just answer
@@ -399,30 +394,31 @@ quiz list" and "load questions for the chosen quiz" at the very start.
 
 ## Consistent emoji across every device
 
-The same emoji character looks different on every OS — Windows 11 draws
-it with Microsoft's "Fluent Emoji" set, macOS with Apple's own, and so
-on, since there's no actual image, just a Unicode character each device
-renders in its own style. `host.html` and `join.html` both load a small
-CDN library (`emoji.fluent-cdn.com`) that scans the page and replaces
-emoji characters with actual Fluent Emoji images, so everyone sees the
-same (nicer, more game-like) style regardless of device —
+The same emoji character looks different on every OS, since there's no
+actual image, just a Unicode character each device renders in its own
+style. `host.html` and `join.html` both load a small CDN library that
+scans the page and replaces emoji characters with actual images, so
+everyone sees the same style regardless of device —
 `enableConsistentEmoji()` in `js/utils.js`.
+
+This originally used a Microsoft "Fluent Emoji" library (closer to
+Windows 11's native look) hosted on a smaller, independent CDN — that
+CDN started returning 403 (Forbidden) errors, so it's now **Twemoji**
+instead, hosted on jsDelivr (a major, well-established CDN). The visual
+style changed slightly (Twitter's flat cartoon look rather than
+Microsoft's Fluent style), but it's far less likely to go down. If you
+ever want to try a different provider again, it's a two-line change: the
+`<script>` src in `host.html`/`join.html`, and the
+`window.twemoji.parse(...)` call in `enableConsistentEmoji()`.
 
 Since the leaderboard, roster, and podium all re-render constantly during
 a game, a one-time pass on page load isn't enough — a `MutationObserver`
 watches for any DOM change and re-scans automatically (debounced, so a
 burst of updates only triggers one pass), rather than every render
-function needing to remember to call this itself.
-
-If that CDN ever turns out unreliable (it's a smaller, less established
-project than some alternatives — e.g. Twemoji, which has similar "swap
-in nicer images" behavior via a different, more battle-tested CDN, but
-in Twitter's own flat cartoon style rather than Microsoft's Fluent
-look), switching providers is a one-line change: update the `<script>`
-src in `host.html`/`join.html`, and the `window.fluentemoji.parse(...)`
-call in `enableConsistentEmoji()`. If the CDN is ever unreachable, this
-fails quietly and emoji just fall back to each device's native
-rendering — nothing else in the app depends on it working.
+function needing to remember to call this itself. If the CDN is ever
+unreachable for any reason, this fails quietly and emoji just fall back
+to each device's native rendering — nothing else in the app depends on
+it working.
 
 ## Previewing it yourself (no second device needed)
 

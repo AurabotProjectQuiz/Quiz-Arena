@@ -1623,3 +1623,19 @@ input {
   100% { transform: translate(-50%, -55px) scale(1); opacity: 0; }
 }
 
+/* the money-earned number that floats up from the attacker — same
+   timing as the stolen-money number, but lime instead of gold */
+.floating-money-gain {
+  position: absolute;
+  left: 50%;
+  top: -6px;
+  transform: translateX(-50%);
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--lime);
+  pointer-events: none;
+  z-index: 21;
+  animation: floating-money-rise 1s ease-out both;
+  white-space: nowrap;
+}
+

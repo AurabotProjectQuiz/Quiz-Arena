@@ -606,10 +606,9 @@ function onDuelStart(payload) {
   currentDuelOpponentEmoji = opponent.emoji;
   currentDuelOpponentName = opponent.name;
 
-  $('#duel-my-avatar').innerHTML = renderForcefieldAvatar(playerEmoji, myFirewall, 64);
-  $('#duel-opponent-avatar').innerHTML = renderForcefieldAvatar(opponent.emoji, opponent.firewall, 64);
-  $('#duel-opponent-name').textContent = opponent.name;
-  $('#duel-header').hidden = false;
+  // Deliberately not shown here — players answer the 3 questions blind,
+  // without seeing either shield. Both avatars only appear together once,
+  // on the big battle cinematic after the whole batch is answered.
 
   duelQuestions = payload.questions.map((q) => ({ ...q, options: shuffle(q.options) }));
   duelQuestionIndex = -1;
@@ -701,64 +700,100 @@ function showDuelBattleCinematic(mine, theirs) {
   $('#duel-battle-opp-avatar').innerHTML = renderForcefieldAvatar(currentDuelOpponentEmoji, oppFirewall, 120);
   $('#duel-battle-opp-name').textContent = currentDuelOpponentName;
 
-  const banner = $('#duel-battle-banner');
-  if (mine.moneyStolen > 0) {
-    banner.textContent = `Shield destroyed! Stole $${mine.moneyStolen} 💰`;
-    banner.className = 'duel-battle-banner correct';
-  } else if (mine.moneyLost > 0) {
-    banner.textContent = `Your shield was destroyed! Lost $${mine.moneyLost} 😵`;
-    banner.className = 'duel-battle-banner incorrect';
-  } else if (mine.yourDamageDealt > 0 && mine.yourDamageDealt >= mine.damageTaken) {
-    banner.textContent = `Chipped ${mine.yourDamageDealt}% off their shield!`;
-    banner.className = 'duel-battle-banner correct';
-  } else if (mine.damageTaken > 0) {
-    banner.textContent = `Lost ${mine.damageTaken}% shield!`;
-    banner.className = 'duel-battle-banner incorrect';
-  } else {
-    banner.textContent = 'Shields held steady ⚡';
-    banner.className = 'duel-battle-banner';
-  }
-
-  // Zap travels from whoever landed the (net) hit toward whoever took it
-  // — "my" avatar sits on the left of the stage, opponent on the right.
-  const zapBolt = $('#duel-battle-zap');
-  zapBolt.classList.remove('zap-fire-right', 'zap-fire-left');
-  void zapBolt.offsetWidth; // force reflow so the animation replays every time
-
   const myAvatarEl = $('#duel-battle-my-avatar').querySelector('.forcefield-avatar');
   const oppAvatarEl = $('#duel-battle-opp-avatar').querySelector('.forcefield-avatar');
-  myAvatarEl?.classList.remove('hit-shake');
-  oppAvatarEl?.classList.remove('hit-shake');
+  const banner = $('#duel-battle-banner');
+  const zapBolt = $('#duel-battle-zap');
+
   clearFloatingDamage(myAvatarEl);
   clearFloatingDamage(oppAvatarEl);
-
-  if (mine.yourDamageDealt >= mine.damageTaken && mine.yourDamageDealt > 0) {
-    zapBolt.classList.add('zap-fire-right');
-    void oppAvatarEl?.offsetWidth;
-    oppAvatarEl?.classList.add('hit-shake');
-    spawnFloatingDamage(oppAvatarEl, `-${mine.yourDamageDealt}%`, 'damage');
-  } else if (mine.damageTaken > 0) {
-    zapBolt.classList.add('zap-fire-left');
-    void myAvatarEl?.offsetWidth;
-    myAvatarEl?.classList.add('hit-shake');
-    spawnFloatingDamage(myAvatarEl, `-${mine.damageTaken}%`, 'damage');
-  }
-
-  // Stolen money floats up from whoever it was taken from — separate
-  // from the shield-damage number, money-colored, ~1 second.
-  if (mine.moneyStolen > 0) {
-    spawnFloatingMoneyLoss(oppAvatarEl, `-$${mine.moneyStolen}`);
-  }
-  if (mine.moneyLost > 0) {
-    spawnFloatingMoneyLoss(myAvatarEl, `-$${mine.moneyLost}`);
-  }
+  myAvatarEl?.classList.remove('hit-shake');
+  oppAvatarEl?.classList.remove('hit-shake');
+  banner.className = 'duel-battle-banner';
+  banner.textContent = '';
+  $('#duel-battle-scores').textContent = '';
 
   showScreen('duel-battle');
-  $('#duel-battle-scores').textContent = `Your money: $${mine.totalScore}`;
+
+  const STRIKE_GAP_MS = 450;
+  const AFTER_STRIKES_PAUSE_MS = 500;
+  const MONEY_POPUP_DELAY_MS = 500;
+  const ACT_GAP_MS = 900;
+
+  function fireZap(direction, targetAvatarEl) {
+    zapBolt.classList.remove('zap-fire-right', 'zap-fire-left');
+    void zapBolt.offsetWidth; // force reflow so the animation replays every time
+    zapBolt.classList.add(direction);
+    targetAvatarEl?.classList.remove('hit-shake');
+    void targetAvatarEl?.offsetWidth;
+    targetAvatarEl?.classList.add('hit-shake');
+  }
+
+  // Plays out one side's attacks: a banner naming the winner, one strike
+  // animation per attack won, the cumulative shield damage floating up,
+  // the money they earned this battle floating up, and — if a shield
+  // actually broke this act — the stolen-money flourish.
+  let t = 300; // small intro pause before anything happens
+  function scheduleAct(attackerName, isMe, attacksWon, damageDealt, moneyEarned, stolenAmount) {
+    if (attacksWon === 0 && moneyEarned === 0) return; // nothing happened on this side at all
+
+    const targetAvatarEl = isMe ? oppAvatarEl : myAvatarEl;
+    const attackerAvatarEl = isMe ? myAvatarEl : oppAvatarEl;
+    const direction = isMe ? 'zap-fire-right' : 'zap-fire-left';
+    const toneClass = isMe ? 'correct' : 'incorrect';
+
+    setTimeout(() => {
+      banner.textContent =
+        attacksWon > 0
+          ? `${attackerName} won ${attacksWon} attack${attacksWon > 1 ? 's' : ''}!`
+          : `${attackerName} didn't land a hit`;
+      banner.className = `duel-battle-banner ${toneClass}`;
+    }, t);
+
+    for (let i = 0; i < attacksWon; i++) {
+      setTimeout(() => fireZap(direction, targetAvatarEl), t + 400 + i * STRIKE_GAP_MS);
+    }
+    t += 400 + attacksWon * STRIKE_GAP_MS;
+
+    if (attacksWon > 0) {
+      t += AFTER_STRIKES_PAUSE_MS;
+      const damageTime = t;
+      setTimeout(() => spawnFloatingDamage(targetAvatarEl, `-${damageDealt}%`, 'damage'), damageTime);
+    }
+
+    if (moneyEarned > 0) {
+      t += MONEY_POPUP_DELAY_MS;
+      const moneyTime = t;
+      setTimeout(() => spawnFloatingMoneyGain(attackerAvatarEl, `+$${moneyEarned}`), moneyTime);
+    }
+
+    if (stolenAmount > 0) {
+      t += MONEY_POPUP_DELAY_MS;
+      const stealTime = t;
+      setTimeout(() => {
+        banner.textContent = `${attackerName} destroyed the shield — stole $${stolenAmount}! 💰`;
+        banner.className = `duel-battle-banner ${toneClass}`;
+        spawnFloatingMoneyLoss(targetAvatarEl, `-$${stolenAmount}`);
+      }, stealTime);
+      t += 700;
+    }
+
+    t += ACT_GAP_MS;
+  }
+
+  // Act 1: my attacks land on them. Act 2: their attacks land on me.
+  scheduleAct('You', true, mine.yourAttacksWon, mine.yourDamageDealt, mine.yourMoneyEarned, mine.moneyStolen);
+  scheduleAct(currentDuelOpponentName, false, mine.opponentAttacksWon, mine.damageTaken, mine.opponentMoneyEarned, mine.moneyLost);
+
+  const finalScoreTime = t;
+  setTimeout(() => {
+    $('#duel-battle-scores').textContent = `Your money: $${mine.totalScore}`;
+  }, finalScoreTime);
+
   setTimeout(() => {
     if (gameEnded) return;
     enterDuelSearching();
-  }, 2800);
+  }, finalScoreTime + 1800);
 }
 
 function spawnFloatingDamage(anchorEl, text, kind) {
@@ -774,6 +809,15 @@ function spawnFloatingMoneyLoss(anchorEl, text) {
   if (!anchorEl) return;
   const el = document.createElement('div');
   el.className = 'floating-money-loss';
+  el.textContent = text;
+  anchorEl.appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+}
+
+function spawnFloatingMoneyGain(anchorEl, text) {
+  if (!anchorEl) return;
+  const el = document.createElement('div');
+  el.className = 'floating-money-gain';
   el.textContent = text;
   anchorEl.appendChild(el);
   el.addEventListener('animationend', () => el.remove());

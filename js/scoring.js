@@ -69,6 +69,19 @@ export function calculateMoney(isCorrect, timeTakenMs, timeLimitSeconds) {
   return Math.round((MIN_MONEY + (MAX_MONEY - MIN_MONEY) * speedFraction) / 5) * 5; // round to nearest $5
 }
 
+// ============================================================
+// Firewall Duel — money earned per correct answer within a battle,
+// independent of who wins that question's attack. Capped at $100 max,
+// per the game's spec.
+// ============================================================
+export const DUEL_MAX_MONEY = 100;
+export const DUEL_MIN_MONEY = 30;
+
+export function calculateDuelMoney(timeTakenMs, timeLimitSeconds) {
+  const speedFraction = calculateSpeedFraction(timeTakenMs, timeLimitSeconds);
+  return Math.round((DUEL_MIN_MONEY + (DUEL_MAX_MONEY - DUEL_MIN_MONEY) * speedFraction) / 5) * 5;
+}
+
 /**
  * Sorts players by score descending and attaches a `place` (1-indexed),
  * with ties sharing the same place.
