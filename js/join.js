@@ -648,6 +648,7 @@ function showNextDuelQuestion() {
 // like classic mode. The big force-field battle cinematic only shows
 // once, after both duelists have finished their whole batch.
 function onDuelQuestionResult(payload) {
+  if (payload.playerId !== playerId) return; // this is the opponent's own per-question result, not mine
   if (payload.duelId !== currentDuelId || payload.questionIndex !== duelQuestionIndex) return; // stale
   clearTimeout(advanceTimeout);
 
