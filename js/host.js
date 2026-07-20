@@ -462,6 +462,7 @@ function startDuelGame() {
 const DUEL_QUESTIONS_PER_BATCH = 3;
 const DUEL_SHIELD_DAMAGE_PCT = 20; // flat % off the loser's shield per question won
 const DUEL_STEAL_FRACTION = 0.15; // fraction of money stolen when a shield breaks
+const DUEL_SAFETY_BUFFER_SECONDS = 45; // generous last-resort margin on top of the 3 questions' own time limits, for genuinely abandoned/disconnected duels only
 
 function pickDuelQuestions(count) {
   if (questions.length >= count) return shuffle([...questions]).slice(0, count);
@@ -535,10 +536,15 @@ function tryMatchmaking() {
 
     // Safety timeout covers the whole 3-question batch, in case a
     // connection drops mid-battle — resolves with whatever progress
-    // exists rather than leaving the pairing stuck forever.
+    // exists rather than leaving the pairing stuck forever. This is
+    // purely a last-resort net for an abandoned/disconnected duel, so
+    // it's deliberately generous (each individual question already
+    // enforces its own time limit client-side via submitAnswer(null)
+    // on timeout) — it should basically never fire during normal,
+    // human-paced play, only when someone genuinely never comes back.
     activeDuels[duelId].timerHandle = setTimeout(
       () => resolveDuelBattle(duelId),
-      (duelTimeLimit * DUEL_QUESTIONS_PER_BATCH + 8) * 1000
+      (duelTimeLimit * DUEL_QUESTIONS_PER_BATCH + DUEL_SAFETY_BUFFER_SECONDS) * 1000
     );
   }
 
