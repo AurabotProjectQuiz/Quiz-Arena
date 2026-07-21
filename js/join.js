@@ -815,7 +815,14 @@ function showDuelBattleCinematic(mine, theirs) {
     $('#duel-battle-scores').textContent = `Your money: $${mine.totalScore}`;
   }, finalScoreTime);
 
-  setTimeout(() => {
+  // The host requeues and can re-pair both players again almost
+  // immediately after sending this result, so a new duel_start can
+  // legitimately arrive well before this pause finishes. This timer
+  // MUST be tracked via the shared advanceTimeout variable (not a bare
+  // setTimeout) so that renderDuelQuestion's clearTimeout(advanceTimeout)
+  // cancels it in that case — otherwise it fires late and yanks the
+  // player back to "searching" in the middle of the NEXT duel.
+  advanceTimeout = setTimeout(() => {
     if (gameEnded) return;
     enterDuelSearching();
   }, finalScoreTime + 1800);
