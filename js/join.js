@@ -40,6 +40,10 @@ let currentDuelOpponentEmoji = '🤖';
 let currentDuelOpponentName = 'Opponent';
 let duelQuestionIndex = -1;
 let duelTotalQuestions = 3;
+let cinematicPlaying = false;   // true while the battle cinematic is on screen
+let pendingDuelStart = null;    // a new pairing that arrived mid-cinematic, applied once it's done
+let pendingDuelQuestion = null; // a later question for that same still-queued duel, if the opponent raced ahead
+let pendingDuelResult = null;   // that same still-queued duel finishing entirely before we've even started it
 const DUEL_QUESTIONS_PER_BATCH = 3;
 
 // Asteroid Defense state — the actual mini-game lives in
@@ -612,6 +616,21 @@ function onDuelStart(payload) {
   // timer can never fire later and clobber an in-progress battle.
   clearTimeout(rulesAutoTimeout);
 
+  // The host requeues and can re-pair both players again immediately
+  // after a battle ends — often before this player's battle cinematic
+  // has even started or finished playing (especially with several
+  // opponents/bots active at once). Don't let a new pairing barge in
+  // and cut the animation off: hold onto it and apply it once the
+  // cinematic's own trailing timer says it's done.
+  if (cinematicPlaying) {
+    pendingDuelStart = payload;
+    return;
+  }
+
+  applyDuelStart(payload);
+}
+
+function applyDuelStart(payload) {
   currentDuelId = payload.duelId;
   const opponentId = Object.keys(payload.players).find((id) => id !== playerId);
   const opponent = payload.players[opponentId];
@@ -631,8 +650,16 @@ function onDuelStart(payload) {
 // Sent by the host once both players have answered the previous
 // question (index 1 or 2 — index 0 arrives as part of duel_start above).
 function onDuelQuestion(payload) {
-  if (payload.duelId !== currentDuelId) return; // not my current duel
-  renderDuelQuestion(payload.questionIndex, payload.question);
+  if (payload.duelId === currentDuelId) {
+    renderDuelQuestion(payload.questionIndex, payload.question);
+    return;
+  }
+  if (pendingDuelStart && payload.duelId === pendingDuelStart.duelId) {
+    // The next duel has already moved past its first question while we
+    // were still watching the previous one's cinematic — remember the
+    // latest one instead of dropping it.
+    pendingDuelQuestion = payload;
+  }
 }
 
 function renderDuelQuestion(questionIndex, question) {
@@ -707,20 +734,30 @@ function onDuelQuestionResult(payload) {
 }
 
 function onDuelResult(payload) {
-  if (payload.duelId !== currentDuelId) return; // stale — already moved on
-  const mine = payload.results[playerId];
-  if (!mine) return;
-  const opponentId = Object.keys(payload.results).find((id) => id !== playerId);
-  const theirs = opponentId ? payload.results[opponentId] : null;
+  if (payload.duelId === currentDuelId) {
+    const mine = payload.results[playerId];
+    if (!mine) return;
+    const opponentId = Object.keys(payload.results).find((id) => id !== playerId);
+    const theirs = opponentId ? payload.results[opponentId] : null;
 
-  clearTimeout(advanceTimeout);
-  myFirewall = mine.firewall;
-  showDuelBattleCinematic(mine, theirs);
+    clearTimeout(advanceTimeout);
+    myFirewall = mine.firewall;
+    showDuelBattleCinematic(mine, theirs);
+    return;
+  }
+  if (pendingDuelStart && payload.duelId === pendingDuelStart.duelId) {
+    // The next duel finished entirely (every question force-resolved by
+    // its own timeouts) before we'd even started watching it — skip
+    // straight to its cinematic once the current one is done instead of
+    // trying to render questions that are already over.
+    pendingDuelResult = payload;
+  }
 }
 
 // The big, dramatic full-screen result — shown once per 3-question
 // battle, after both duelists have finished their whole batch.
 function showDuelBattleCinematic(mine, theirs) {
+  cinematicPlaying = true;
   const oppFirewall = theirs ? theirs.firewall : 100;
   $('#duel-battle-my-avatar').innerHTML = renderForcefieldAvatar(playerEmoji, mine.firewall, 120);
   $('#duel-battle-opp-avatar').innerHTML = renderForcefieldAvatar(currentDuelOpponentEmoji, oppFirewall, 120);
@@ -823,8 +860,30 @@ function showDuelBattleCinematic(mine, theirs) {
   // cancels it in that case — otherwise it fires late and yanks the
   // player back to "searching" in the middle of the NEXT duel.
   advanceTimeout = setTimeout(() => {
+    cinematicPlaying = false;
     if (gameEnded) return;
-    enterDuelSearching();
+
+    if (pendingDuelResult) {
+      const resultPayload = pendingDuelResult;
+      pendingDuelStart = null;
+      pendingDuelQuestion = null;
+      pendingDuelResult = null;
+      currentDuelId = resultPayload.duelId; // so onDuelResult's own match check passes
+      onDuelResult(resultPayload);
+    } else if (pendingDuelQuestion) {
+      const startPayload = pendingDuelStart;
+      const questionPayload = pendingDuelQuestion;
+      pendingDuelStart = null;
+      pendingDuelQuestion = null;
+      applyDuelStart(startPayload); // sets up opponent name/emoji/etc, then...
+      renderDuelQuestion(questionPayload.questionIndex, questionPayload.question); // ...jump straight to the latest question
+    } else if (pendingDuelStart) {
+      const startPayload = pendingDuelStart;
+      pendingDuelStart = null;
+      applyDuelStart(startPayload);
+    } else {
+      enterDuelSearching();
+    }
   }, finalScoreTime + 1800);
 }
 
