@@ -1579,6 +1579,23 @@ input {
 }
 .duel-battle-banner.correct { color: var(--lime); }
 .duel-battle-banner.incorrect { color: var(--danger); }
+.duel-battle-banner.missed { color: var(--text-dim); }
+
+.game-time-badge {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 1000;
+  background: rgba(10, 8, 30, 0.7);
+  color: var(--lime);
+  font-family: var(--font-display);
+  font-size: 14px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  backdrop-filter: blur(4px);
+}
+.game-time-badge.low-time { color: var(--danger); border-color: var(--danger); }
 
 /* floating "-340" style damage numbers, RPG-style, anchored to whichever
    avatar took the hit */

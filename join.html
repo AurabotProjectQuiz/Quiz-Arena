@@ -14,6 +14,8 @@
 </head>
 <body>
 
+  <div id="game-time-badge" class="game-time-badge" hidden>⏱️ <span id="game-time-remaining">--:--</span></div>
+
   <!-- STEP 1: join form -->
   <section id="screen-join" class="screen">
     <div class="logo">QUIZ <span>ARENA</span></div>
@@ -101,10 +103,10 @@
     <p class="center-text" id="duel-battle-scores" style="color:var(--text-faint);font-size:13px;"></p>
   </section>
 
-  <!-- STEP 4c: Firewall Duel — waiting for the opponent to finish their 3 questions -->
+  <!-- STEP 4c: Firewall Duel — waiting for the opponent to answer this question -->
   <section id="screen-duel-waiting" class="screen" hidden>
     <span class="eyebrow">🔥 Firewall Duel</span>
-    <h2 class="display" style="font-size:20px;">⏳ Waiting for your opponent to finish…</h2>
+    <h2 class="display" style="font-size:20px;">⏳ Waiting for your opponent to answer…</h2>
     <div class="card center-text" style="max-width:300px;">
       <span class="eyebrow">Your firewall</span>
       <div class="display" style="font-size:36px;color:var(--lime);" id="duel-waiting-firewall">100%</div>
