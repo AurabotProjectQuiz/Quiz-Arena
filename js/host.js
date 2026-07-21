@@ -43,6 +43,12 @@ let endgameTimerTimeout = null;
 let endgameTimerInterval = null;
 let endgameTimerStarted = false;
 
+// Overall game duration — teacher-set, applies to every mode. Once it
+// runs out, the game ends automatically and final standings show.
+let gameDurationTimerInterval = null;
+let gameDurationTimeout = null;
+let gameEndTimestamp = null;
+
 // Firewall Duel — duel-mode-only state
 let duelQueue = [];      // playerIds waiting to be matched
 let activeDuels = {};    // duelId -> { players: [idA, idB], question, answers: {}, resolved, timerHandle }
@@ -288,26 +294,26 @@ function startDemoAnswering() {
   demoAnswerInterval = setInterval(() => {
     if (gameMode === 'duel') {
       // Bots can only "answer" while they're actually paired in a live
-      // duel and still have questions left in their batch — matchmaking
-      // and the answeredCount tracking handle the rest.
+      // duel and haven't answered the CURRENT (shared) question yet —
+      // matchmaking and resolveDuelQuestion handle the rest.
       const waitingBots = [];
       for (const duel of Object.values(activeDuels)) {
         if (duel.resolved) continue;
         for (const pid of duel.players) {
-          if (players[pid]?.isDemo && duel.answeredCount[pid] < DUEL_QUESTIONS_PER_BATCH) {
+          if (players[pid]?.isDemo && duel.answers[pid] === null) {
             waitingBots.push({ pid, duel });
           }
         }
       }
       if (waitingBots.length === 0) return;
       const { pid, duel } = waitingBots[Math.floor(Math.random() * waitingBots.length)];
-      const questionIndex = duel.answeredCount[pid];
+      const questionIndex = duel.currentQuestionIndex;
       const question = duel.questions[questionIndex];
       const willBeCorrect = Math.random() < 0.7;
       const wrongOption = question.options.find((o) => o.id !== question.correct_option_id);
       const optionId = willBeCorrect ? question.correct_option_id : (wrongOption ? wrongOption.id : null);
       const timeTakenMs = Math.random() * duel.timeLimitSeconds * 1000;
-      handleAnswer({ playerId: pid, duelId: duel.id, questionIndex, questionId: question.id, optionId, timeTakenMs });
+      handleAnswer({ playerId: pid, duelId: duel.id, questionIndex, optionId, timeTakenMs });
       return;
     }
 
@@ -341,7 +347,42 @@ function stopDemoAnswering() {
 
 $('#btn-start-game').addEventListener('click', startGame);
 
+// Teacher sets how long the whole game runs for, up front in the lobby.
+// This is independent of gameMode — it applies the same way whether
+// students are racing through classic questions, dueling, or anything
+// else, and is the only thing that ends an otherwise-endless mode like
+// Firewall Duel or Asteroid Defense.
+function startGameDurationTimer() {
+  clearInterval(gameDurationTimerInterval);
+  clearTimeout(gameDurationTimeout);
+
+  const minutes = Math.max(1, parseInt($('#game-duration-input').value, 10) || 15);
+  const totalSeconds = minutes * 60;
+  gameEndTimestamp = Date.now() + totalSeconds * 1000;
+
+  const banner = $('#game-duration-banner');
+  const countEl = $('#game-duration-count');
+  banner.hidden = false;
+
+  function tick() {
+    const remainingSeconds = Math.max(0, Math.round((gameEndTimestamp - Date.now()) / 1000));
+    const mm = String(Math.floor(remainingSeconds / 60)).padStart(2, '0');
+    const ss = String(remainingSeconds % 60).padStart(2, '0');
+    countEl.textContent = `${mm}:${ss}`;
+    channel.send({ type: 'broadcast', event: 'time_update', payload: { secondsRemaining: remainingSeconds } });
+    if (remainingSeconds <= 0) clearInterval(gameDurationTimerInterval);
+  }
+
+  tick();
+  gameDurationTimerInterval = setInterval(tick, 1000);
+  gameDurationTimeout = setTimeout(() => {
+    clearInterval(gameDurationTimerInterval);
+    endGame();
+  }, totalSeconds * 1000);
+}
+
 function startGame() {
+  startGameDurationTimer();
   if (gameMode === 'board') return startBoardGame();
   if (gameMode === 'duel') return startDuelGame();
   if (gameMode === 'outbreak') return startOutbreakGame();
@@ -462,7 +503,6 @@ function startDuelGame() {
 const DUEL_QUESTIONS_PER_BATCH = 3;
 const DUEL_SHIELD_DAMAGE_PCT = 20; // flat % off the loser's shield per question won
 const DUEL_STEAL_FRACTION = 0.15; // fraction of money stolen when a shield breaks
-const DUEL_SAFETY_BUFFER_SECONDS = 45; // generous last-resort margin on top of the 3 questions' own time limits, for genuinely abandoned/disconnected duels only
 
 function pickDuelQuestions(count) {
   if (questions.length >= count) return shuffle([...questions]).slice(0, count);
@@ -485,8 +525,6 @@ function tryMatchmaking() {
       continue;
     }
 
-    // A shield only refreshes to 100% here, at the start of a player's
-    // NEXT matchup — not instantly mid-battle when it breaks.
     if (players[aId].firewall <= 0) players[aId].firewall = 100;
     if (players[bId].firewall <= 0) players[bId].firewall = 100;
 
@@ -500,33 +538,41 @@ function tryMatchmaking() {
     players[aId].duelOpponentId = bId;
     players[bId].duelOpponentId = aId;
 
+    // Synchronized, question-by-question battle state: both players see
+    // the SAME question at the SAME time, and neither advances to the
+    // next one (or into the final battle cinematic) until both have
+    // answered the current one — either for real, or via timeout.
     activeDuels[duelId] = {
       id: duelId,
       players: [aId, bId],
       questions: duelQuestions,
       timeLimitSeconds: duelTimeLimit,
-      answers: {
-        [aId]: new Array(DUEL_QUESTIONS_PER_BATCH).fill(null),
-        [bId]: new Array(DUEL_QUESTIONS_PER_BATCH).fill(null),
-      },
-      answeredCount: { [aId]: 0, [bId]: 0 },
+      currentQuestionIndex: 0,
+      answers: { [aId]: null, [bId]: null }, // this question only
       resolved: false,
       timerHandle: null,
+      // accumulated across all 3 questions, for the final cinematic
+      aAttacksWon: 0,
+      bAttacksWon: 0,
+      totalDamageToA: 0,
+      totalDamageToB: 0,
+      aMoneyEarned: 0,
+      bMoneyEarned: 0,
+      aBrokeAtLeastOnce: false,
+      bBrokeAtLeastOnce: false,
+      aStolenTotal: 0,
+      bStolenTotal: 0,
     };
 
-    const sanitizedQuestions = duelQuestions.map((q) => ({
-      id: q.id,
-      text: q.question_text,
-      options: q.options,
-      timeLimitSeconds: duelTimeLimit,
-    }));
-
+    const q0 = duelQuestions[0];
     channel.send({
       type: 'broadcast',
       event: 'duel_start',
       payload: {
         duelId,
-        questions: sanitizedQuestions,
+        totalQuestions: DUEL_QUESTIONS_PER_BATCH,
+        questionIndex: 0,
+        question: { id: q0.id, text: q0.question_text, options: q0.options, timeLimitSeconds: duelTimeLimit },
         players: {
           [aId]: { name: players[aId].name, emoji: players[aId].emoji, firewall: players[aId].firewall },
           [bId]: { name: players[bId].name, emoji: players[bId].emoji, firewall: players[bId].firewall },
@@ -534,21 +580,30 @@ function tryMatchmaking() {
       },
     });
 
-    // Safety timeout covers the whole 3-question batch, in case a
-    // connection drops mid-battle — resolves with whatever progress
-    // exists rather than leaving the pairing stuck forever. This is
-    // purely a last-resort net for an abandoned/disconnected duel, so
-    // it's deliberately generous (each individual question already
-    // enforces its own time limit client-side via submitAnswer(null)
-    // on timeout) — it should basically never fire during normal,
-    // human-paced play, only when someone genuinely never comes back.
-    activeDuels[duelId].timerHandle = setTimeout(
-      () => resolveDuelBattle(duelId),
-      (duelTimeLimit * DUEL_QUESTIONS_PER_BATCH + DUEL_SAFETY_BUFFER_SECONDS) * 1000
-    );
+    armDuelQuestionTimeout(duelId);
   }
 
   renderDuelView();
+}
+
+// Safety net for a single question, not the whole battle: if one player
+// never answers (disconnected, or just never comes back), this forces
+// that question to resolve after its time limit (plus a network/render
+// buffer) rather than leaving the other player stuck waiting forever.
+function armDuelQuestionTimeout(duelId) {
+  const duel = activeDuels[duelId];
+  if (!duel) return;
+  clearTimeout(duel.timerHandle);
+  duel.timerHandle = setTimeout(() => forceResolveDuelQuestion(duelId), (duel.timeLimitSeconds + 3) * 1000);
+}
+
+function forceResolveDuelQuestion(duelId) {
+  const duel = activeDuels[duelId];
+  if (!duel || duel.resolved) return;
+  const [aId, bId] = duel.players;
+  if (duel.answers[aId] === null) duel.answers[aId] = { optionId: null, timeTakenMs: duel.timeLimitSeconds * 1000, isCorrect: false };
+  if (duel.answers[bId] === null) duel.answers[bId] = { optionId: null, timeTakenMs: duel.timeLimitSeconds * 1000, isCorrect: false };
+  resolveDuelQuestion(duelId);
 }
 
 // ------------------------------------------------------------
@@ -593,30 +648,27 @@ function handleAnswer(payload) {
 }
 
 // ------------------------------------------------------------
-// Firewall Duel — money is earned immediately per question (like every
-// other mode), independent of the shield battle. Each player answers
-// their 3-question batch independently and asynchronously; once BOTH
-// duelists have answered all 3, the shield/steal outcome resolves.
+// Firewall Duel — both players see the SAME question at the SAME time.
+// A player's answer is recorded but nothing is scored/resolved until
+// BOTH have answered this question (handled in resolveDuelQuestion,
+// triggered here or by the per-question timeout).
 // ------------------------------------------------------------
 function handleDuelAnswer(payload) {
-  const { playerId, duelId, questionIndex, questionId, optionId, timeTakenMs } = payload;
+  const { playerId, duelId, questionIndex, optionId, timeTakenMs } = payload;
   const duel = activeDuels[duelId];
   if (!duel || duel.resolved) return; // stale — this duel already resolved
   if (!duel.players.includes(playerId)) return;
+  if (questionIndex !== duel.currentQuestionIndex) return; // stale/out of sync — not the question we're on
+  if (duel.answers[playerId] !== null) return; // already answered this question
 
   const question = duel.questions[questionIndex];
-  if (!question || question.id !== questionId) return; // stale/mismatched question
-  if (duel.answers[playerId][questionIndex] !== null) return; // already answered
-  if (duel.answeredCount[playerId] !== questionIndex) return; // out of order
-
-  duel.answers[playerId][questionIndex] = { optionId, timeTakenMs };
-  duel.answeredCount[playerId] += 1;
+  const isCorrect = optionId != null && optionId === question.correct_option_id;
+  duel.answers[playerId] = { optionId, timeTakenMs, isCorrect };
 
   // Money/shield outcomes depend on comparing both players' answers to
   // THIS SAME question, which we can't know until both have answered it —
   // so this is deliberately just a lightweight correct/incorrect ping,
-  // not a scored result. The full outcome comes from resolveDuelBattle().
-  const isCorrect = optionId != null && optionId === question.correct_option_id;
+  // not a scored result. The full outcome comes from resolveDuelQuestion().
   channel.send({
     type: 'broadcast',
     event: 'duel_question_result',
@@ -624,23 +676,118 @@ function handleDuelAnswer(payload) {
   });
 
   const [aId, bId] = duel.players;
-  if (duel.answeredCount[aId] >= DUEL_QUESTIONS_PER_BATCH && duel.answeredCount[bId] >= DUEL_QUESTIONS_PER_BATCH) {
-    resolveDuelBattle(duelId);
+  if (duel.answers[aId] !== null && duel.answers[bId] !== null) {
+    resolveDuelQuestion(duelId);
   }
 }
 
-// Resolves the whole battle in question order (0, 1, 2), so money and
-// shield state build up sequentially exactly like the battle "played
-// out": for each question, anyone who answered correctly earns money
-// for their own speed; whoever answered correctly AND fastest also
-// chips DUEL_SHIELD_DAMAGE_PCT off the opponent's shield. The instant a
-// shield hits 0%, the breaker immediately steals DUEL_STEAL_FRACTION of
-// the broken player's money **as it stands at that point in the
-// sequence** (not money from questions later in the batch), and the
-// shield refreshes to 100% right away — the battle keeps going on the
-// remaining questions with a fresh shield, it doesn't wait for the next
-// matchup.
-function resolveDuelBattle(duelId) {
+// Resolves ONE question once both players have answered it (for real or
+// via timeout): anyone who answered correctly earns money for their own
+// speed; whoever answered correctly AND fastest also chips
+// DUEL_SHIELD_DAMAGE_PCT off the opponent's shield. The instant a shield
+// hits 0%, the breaker immediately steals DUEL_STEAL_FRACTION of the
+// broken player's money **as it stands at that point**, and the shield
+// refreshes to 100% right away. Then either the next question is sent
+// (both players advance together) or, after question 3, the battle
+// cinematic fires with everything accumulated across all 3 questions.
+function resolveDuelQuestion(duelId) {
+  const duel = activeDuels[duelId];
+  if (!duel || duel.resolved) return;
+  clearTimeout(duel.timerHandle);
+
+  const [aId, bId] = duel.players;
+  const a = players[aId];
+  const b = players[bId];
+  const aAns = duel.answers[aId];
+  const bAns = duel.answers[bId];
+
+  if (aAns.isCorrect) {
+    const money = calculateDuelMoney(aAns.timeTakenMs, duel.timeLimitSeconds);
+    a.score += money;
+    duel.aMoneyEarned += money;
+  }
+  if (bAns.isCorrect) {
+    const money = calculateDuelMoney(bAns.timeTakenMs, duel.timeLimitSeconds);
+    b.score += money;
+    duel.bMoneyEarned += money;
+  }
+
+  let winner = null; // whoever answered this one correctly and fastest — first wins the attack
+  if (aAns.isCorrect && bAns.isCorrect) winner = aAns.timeTakenMs <= bAns.timeTakenMs ? 'a' : 'b';
+  else if (aAns.isCorrect) winner = 'a';
+  else if (bAns.isCorrect) winner = 'b';
+
+  if (winner === 'a') {
+    duel.aAttacksWon += 1;
+    const damage = Math.min(DUEL_SHIELD_DAMAGE_PCT, b.firewall);
+    b.firewall -= damage;
+    duel.totalDamageToB += damage;
+    if (b.firewall <= 0) {
+      duel.bBrokeAtLeastOnce = true;
+      const stolen = Math.round(b.score * DUEL_STEAL_FRACTION);
+      b.score = Math.max(0, b.score - stolen);
+      a.score += stolen;
+      duel.aStolenTotal += stolen;
+      a.breachesDealt += 1;
+      a.wins += 1;
+      b.firewall = 100; // fully depleted — refreshes immediately, battle continues
+    }
+  } else if (winner === 'b') {
+    duel.bAttacksWon += 1;
+    const damage = Math.min(DUEL_SHIELD_DAMAGE_PCT, a.firewall);
+    a.firewall -= damage;
+    duel.totalDamageToA += damage;
+    if (a.firewall <= 0) {
+      duel.aBrokeAtLeastOnce = true;
+      const stolen = Math.round(a.score * DUEL_STEAL_FRACTION);
+      a.score = Math.max(0, a.score - stolen);
+      b.score += stolen;
+      duel.bStolenTotal += stolen;
+      b.breachesDealt += 1;
+      b.wins += 1;
+      a.firewall = 100;
+    }
+  }
+
+  renderLeaderboard(rankPlayers(Object.values(players)), '#leaderboard');
+
+  duel.currentQuestionIndex += 1;
+  if (duel.currentQuestionIndex >= DUEL_QUESTIONS_PER_BATCH) {
+    finishDuelBattle(duelId);
+  } else {
+    sendDuelQuestion(duelId);
+  }
+}
+
+// Sends the next question in a battle already in progress (index 1 or 2
+// — index 0 goes out as part of duel_start in tryMatchmaking). Resets
+// this question's answers and re-arms the per-question safety timeout.
+function sendDuelQuestion(duelId) {
+  const duel = activeDuels[duelId];
+  if (!duel) return;
+  const [aId, bId] = duel.players;
+  duel.answers = { [aId]: null, [bId]: null };
+
+  const q = duel.questions[duel.currentQuestionIndex];
+  channel.send({
+    type: 'broadcast',
+    event: 'duel_question',
+    payload: {
+      duelId,
+      questionIndex: duel.currentQuestionIndex,
+      totalQuestions: DUEL_QUESTIONS_PER_BATCH,
+      question: { id: q.id, text: q.question_text, options: q.options, timeLimitSeconds: duel.timeLimitSeconds },
+    },
+  });
+
+  armDuelQuestionTimeout(duelId);
+  renderDuelView();
+}
+
+// Called once question 3 has resolved for both players — sends the
+// full-battle cinematic payload (accumulated across all 3 questions)
+// and requeues both players for a fresh opponent.
+function finishDuelBattle(duelId) {
   const duel = activeDuels[duelId];
   if (!duel || duel.resolved) return;
   duel.resolved = true;
@@ -650,73 +797,6 @@ function resolveDuelBattle(duelId) {
   const a = players[aId];
   const b = players[bId];
 
-  let totalDamageToA = 0;
-  let totalDamageToB = 0;
-  let aAttacksWon = 0;
-  let bAttacksWon = 0;
-  let aMoneyEarned = 0; // money A made THIS battle, independent of who wins each attack
-  let bMoneyEarned = 0;
-  let aBrokeAtLeastOnce = false;
-  let bBrokeAtLeastOnce = false;
-  let aStolenTotal = 0; // money A stole from B, across the whole battle
-  let bStolenTotal = 0; // money B stole from A, across the whole battle
-
-  for (let i = 0; i < duel.questions.length; i++) {
-    const q = duel.questions[i];
-    const aAns = duel.answers[aId][i];
-    const bAns = duel.answers[bId][i];
-    const aCorrect = !!aAns && aAns.optionId === q.correct_option_id;
-    const bCorrect = !!bAns && bAns.optionId === q.correct_option_id;
-
-    if (aCorrect) {
-      const money = calculateDuelMoney(aAns.timeTakenMs, duel.timeLimitSeconds);
-      a.score += money;
-      aMoneyEarned += money;
-    }
-    if (bCorrect) {
-      const money = calculateDuelMoney(bAns.timeTakenMs, duel.timeLimitSeconds);
-      b.score += money;
-      bMoneyEarned += money;
-    }
-
-    let winner = null; // whoever answered this one correctly and fastest — first wins the attack
-    if (aCorrect && bCorrect) winner = aAns.timeTakenMs <= bAns.timeTakenMs ? 'a' : 'b';
-    else if (aCorrect) winner = 'a';
-    else if (bCorrect) winner = 'b';
-
-    if (winner === 'a') {
-      aAttacksWon += 1;
-      const damage = Math.min(DUEL_SHIELD_DAMAGE_PCT, b.firewall);
-      b.firewall -= damage;
-      totalDamageToB += damage;
-      if (b.firewall <= 0) {
-        bBrokeAtLeastOnce = true;
-        const stolen = Math.round(b.score * DUEL_STEAL_FRACTION);
-        b.score = Math.max(0, b.score - stolen);
-        a.score += stolen;
-        aStolenTotal += stolen;
-        a.breachesDealt += 1;
-        a.wins += 1;
-        b.firewall = 100; // fully depleted — refreshes immediately, battle continues
-      }
-    } else if (winner === 'b') {
-      bAttacksWon += 1;
-      const damage = Math.min(DUEL_SHIELD_DAMAGE_PCT, a.firewall);
-      a.firewall -= damage;
-      totalDamageToA += damage;
-      if (a.firewall <= 0) {
-        aBrokeAtLeastOnce = true;
-        const stolen = Math.round(a.score * DUEL_STEAL_FRACTION);
-        a.score = Math.max(0, a.score - stolen);
-        b.score += stolen;
-        bStolenTotal += stolen;
-        b.breachesDealt += 1;
-        b.wins += 1;
-        a.firewall = 100;
-      }
-    }
-  }
-
   channel.send({
     type: 'broadcast',
     event: 'duel_result',
@@ -724,31 +804,31 @@ function resolveDuelBattle(duelId) {
       duelId,
       results: {
         [aId]: {
-          yourAttacksWon: aAttacksWon,
-          opponentAttacksWon: bAttacksWon,
-          yourDamageDealt: totalDamageToB,
-          damageTaken: totalDamageToA,
-          yourMoneyEarned: aMoneyEarned,
-          opponentMoneyEarned: bMoneyEarned,
+          yourAttacksWon: duel.aAttacksWon,
+          opponentAttacksWon: duel.bAttacksWon,
+          yourDamageDealt: duel.totalDamageToB,
+          damageTaken: duel.totalDamageToA,
+          yourMoneyEarned: duel.aMoneyEarned,
+          opponentMoneyEarned: duel.bMoneyEarned,
           firewall: a.firewall,
-          broken: aBrokeAtLeastOnce,
-          opponentBroken: bBrokeAtLeastOnce,
-          moneyStolen: aStolenTotal,
-          moneyLost: bStolenTotal,
+          broken: duel.aBrokeAtLeastOnce,
+          opponentBroken: duel.bBrokeAtLeastOnce,
+          moneyStolen: duel.aStolenTotal,
+          moneyLost: duel.bStolenTotal,
           totalScore: a.score,
         },
         [bId]: {
-          yourAttacksWon: bAttacksWon,
-          opponentAttacksWon: aAttacksWon,
-          yourDamageDealt: totalDamageToA,
-          damageTaken: totalDamageToB,
-          yourMoneyEarned: bMoneyEarned,
-          opponentMoneyEarned: aMoneyEarned,
+          yourAttacksWon: duel.bAttacksWon,
+          opponentAttacksWon: duel.aAttacksWon,
+          yourDamageDealt: duel.totalDamageToA,
+          damageTaken: duel.totalDamageToB,
+          yourMoneyEarned: duel.bMoneyEarned,
+          opponentMoneyEarned: duel.aMoneyEarned,
           firewall: b.firewall,
-          broken: bBrokeAtLeastOnce,
-          opponentBroken: aBrokeAtLeastOnce,
-          moneyStolen: bStolenTotal,
-          moneyLost: aStolenTotal,
+          broken: duel.bBrokeAtLeastOnce,
+          opponentBroken: duel.aBrokeAtLeastOnce,
+          moneyStolen: duel.bStolenTotal,
+          moneyLost: duel.aStolenTotal,
           totalScore: b.score,
         },
       },
@@ -780,12 +860,12 @@ function renderDuelView() {
         <div class="duel-card">
           <div class="duel-vs-side">
             ${renderForcefieldAvatar(a.emoji, a.firewall, 44)}
-            <span class="duel-vs-name">${escapeHtml(a.name)} (${d.answeredCount[aId]}/${DUEL_QUESTIONS_PER_BATCH})</span>
+            <span class="duel-vs-name">${escapeHtml(a.name)}</span>
           </div>
-          <span class="duel-vs-label">⚡</span>
+          <span class="duel-vs-label">⚡ Q${d.currentQuestionIndex + 1}/${DUEL_QUESTIONS_PER_BATCH}</span>
           <div class="duel-vs-side">
             ${renderForcefieldAvatar(b.emoji, b.firewall, 44)}
-            <span class="duel-vs-name">${escapeHtml(b.name)} (${d.answeredCount[bId]}/${DUEL_QUESTIONS_PER_BATCH})</span>
+            <span class="duel-vs-name">${escapeHtml(b.name)}</span>
           </div>
         </div>
       `;
@@ -1276,7 +1356,10 @@ function endGame() {
   stopDemoAnswering(); // demo hook — delete this line to remove pretend-host mode
   clearTimeout(endgameTimerTimeout);
   clearInterval(endgameTimerInterval);
+  clearTimeout(gameDurationTimeout);
+  clearInterval(gameDurationTimerInterval);
   $('#board-timer-banner').hidden = true;
+  $('#game-duration-banner').hidden = true;
 
   // Any duels still in flight won't get to resolve — cancel their timers
   // so they don't fire after the game screen has already moved on.

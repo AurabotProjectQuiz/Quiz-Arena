@@ -38,9 +38,8 @@ let currentDuelId = null;
 let myFirewall = 100;
 let currentDuelOpponentEmoji = '🤖';
 let currentDuelOpponentName = 'Opponent';
-let duelQuestions = [];       // this duel's 3-question batch
 let duelQuestionIndex = -1;
-let duelBatchScore = 0;
+let duelTotalQuestions = 3;
 const DUEL_QUESTIONS_PER_BATCH = 3;
 
 // Asteroid Defense state — the actual mini-game lives in
@@ -148,9 +147,11 @@ async function joinGame() {
   channel.on('broadcast', { event: 'answer_result' }, ({ payload }) => onAnswerResult(payload));
   channel.on('broadcast', { event: 'round_result' }, ({ payload }) => onRoundResult(payload));
   channel.on('broadcast', { event: 'duel_start' }, ({ payload }) => onDuelStart(payload));
+  channel.on('broadcast', { event: 'duel_question' }, ({ payload }) => onDuelQuestion(payload));
   channel.on('broadcast', { event: 'duel_question_result' }, ({ payload }) => onDuelQuestionResult(payload));
   channel.on('broadcast', { event: 'duel_result' }, ({ payload }) => onDuelResult(payload));
   channel.on('broadcast', { event: 'game_over' }, ({ payload }) => onGameOver(payload));
+  channel.on('broadcast', { event: 'time_update' }, ({ payload }) => onTimeUpdate(payload));
 
   channel.subscribe(async (status) => {
     if (status === 'SUBSCRIBED') {
@@ -400,7 +401,15 @@ function submitAnswer(optionId) {
   // on an opponent too, so they get a longer grace period tied to the
   // question's own time limit rather than a flat 4s.
   if (gameMode === 'duel') {
-    advanceTimeout = setTimeout(() => proceedAfterDuelQuestion(), currentQuestion.timeLimitSeconds * 1000 + 6000);
+    // Fallback in case our own duel_question_result broadcast gets lost:
+    // move to the "waiting for opponent" screen anyway after a beat (the
+    // real event, once it arrives, clears this and shows the proper
+    // reveal first). If nothing at all arrives for a long while, bail
+    // out to searching rather than stranding the player forever.
+    advanceTimeout = setTimeout(() => {
+      enterDuelWaitingForOpponent();
+      advanceTimeout = setTimeout(() => enterDuelSearching(), (currentQuestion.timeLimitSeconds + 25) * 1000);
+    }, 1500);
   } else if (gameMode === 'board') {
     advanceTimeout = setTimeout(() => {
       if (roundIndex + 1 < roundQueue.length) {
@@ -610,25 +619,30 @@ function onDuelStart(payload) {
   myFirewall = me.firewall;
   currentDuelOpponentEmoji = opponent.emoji;
   currentDuelOpponentName = opponent.name;
+  duelTotalQuestions = payload.totalQuestions;
 
-  // Deliberately not shown here — players answer the 3 questions blind,
-  // without seeing either shield. Both avatars only appear together once,
-  // on the big battle cinematic after the whole batch is answered.
+  // Deliberately not shown here — players answer blind, without seeing
+  // either shield. Both avatars only appear together on the big battle
+  // cinematic after all 3 questions are done.
 
-  duelQuestions = payload.questions.map((q) => ({ ...q, options: shuffle(q.options) }));
-  duelQuestionIndex = -1;
-  duelBatchScore = 0;
-
-  showNextDuelQuestion();
+  renderDuelQuestion(payload.questionIndex, payload.question);
 }
 
-function showNextDuelQuestion() {
-  duelQuestionIndex++;
-  currentQuestion = duelQuestions[duelQuestionIndex];
+// Sent by the host once both players have answered the previous
+// question (index 1 or 2 — index 0 arrives as part of duel_start above).
+function onDuelQuestion(payload) {
+  if (payload.duelId !== currentDuelId) return; // not my current duel
+  renderDuelQuestion(payload.questionIndex, payload.question);
+}
+
+function renderDuelQuestion(questionIndex, question) {
+  clearTimeout(advanceTimeout);
+  duelQuestionIndex = questionIndex;
+  currentQuestion = { ...question, options: shuffle(question.options) };
   answered = false;
   questionStartClientTime = performance.now();
 
-  $('#progress-label').textContent = `⚡ Duel Q${duelQuestionIndex + 1}/${DUEL_QUESTIONS_PER_BATCH} vs ${currentDuelOpponentName}`;
+  $('#progress-label').textContent = `⚡ Duel Q${duelQuestionIndex + 1}/${duelTotalQuestions} vs ${currentDuelOpponentName}`;
   $('#player-question-text').textContent = currentQuestion.text;
 
   const grid = $('#player-options-grid');
@@ -649,9 +663,9 @@ function showNextDuelQuestion() {
   });
 }
 
-// Per-question feedback within the 3-question batch — quick and light,
-// like classic mode. The big force-field battle cinematic only shows
-// once, after both duelists have finished their whole batch.
+// Per-question feedback — quick and light, like classic mode. The big
+// force-field battle cinematic only shows once, after question 3
+// resolves for both players.
 function onDuelQuestionResult(payload) {
   if (payload.playerId !== playerId) return; // this is the opponent's own per-question result, not mine
   if (payload.duelId !== currentDuelId || payload.questionIndex !== duelQuestionIndex) return; // stale
@@ -670,20 +684,22 @@ function onDuelQuestionResult(payload) {
     banner.className = 'reveal-banner incorrect';
     $('#points-earned').textContent = '';
   }
-  $('#score-label').textContent = `Question ${duelQuestionIndex + 1} of ${DUEL_QUESTIONS_PER_BATCH}`;
+  $('#score-label').textContent = `Question ${duelQuestionIndex + 1} of ${duelTotalQuestions}`;
   $('#my-total-score').textContent = payload.correct ? '✅' : '❌';
 
   flashRevealScreen(payload.correct);
   showScreen('reveal');
-  setTimeout(() => proceedAfterDuelQuestion(), 1300);
-}
 
-function proceedAfterDuelQuestion() {
-  if (duelQuestionIndex + 1 >= DUEL_QUESTIONS_PER_BATCH) {
+  // Neither the next question nor the battle cinematic can arrive until
+  // your OPPONENT has also answered this question — so after your own
+  // quick reveal, sit on a "waiting for opponent" screen. Whichever
+  // real event (onDuelQuestion or onDuelResult) arrives next will
+  // override this screen automatically. The extra timeout below is
+  // purely a last-resort escape hatch in case a connection drops.
+  setTimeout(() => {
     enterDuelWaitingForOpponent();
-  } else {
-    showNextDuelQuestion();
-  }
+    advanceTimeout = setTimeout(() => enterDuelSearching(), (currentQuestion.timeLimitSeconds + 25) * 1000);
+  }, 1300);
 }
 
 function onDuelResult(payload) {
@@ -741,25 +757,24 @@ function showDuelBattleCinematic(mine, theirs) {
   // actually broke this act — the stolen-money flourish.
   let t = 300; // small intro pause before anything happens
   function scheduleAct(attackerName, isMe, attacksWon, damageDealt, moneyEarned, stolenAmount) {
-    if (attacksWon === 0 && moneyEarned === 0) return; // nothing happened on this side at all
-
     const targetAvatarEl = isMe ? oppAvatarEl : myAvatarEl;
     const attackerAvatarEl = isMe ? myAvatarEl : oppAvatarEl;
     const direction = isMe ? 'zap-fire-right' : 'zap-fire-left';
-    const toneClass = isMe ? 'correct' : 'incorrect';
+    const toneClass = attacksWon > 0 ? (isMe ? 'correct' : 'incorrect') : 'missed';
 
     setTimeout(() => {
       banner.textContent =
         attacksWon > 0
           ? `${attackerName} won ${attacksWon} attack${attacksWon > 1 ? 's' : ''}!`
-          : `${attackerName} didn't land a hit`;
+          : `${attackerName} missed 💨`;
       banner.className = `duel-battle-banner ${toneClass}`;
     }, t);
+    t += 400;
 
     for (let i = 0; i < attacksWon; i++) {
-      setTimeout(() => fireZap(direction, targetAvatarEl), t + 400 + i * STRIKE_GAP_MS);
+      setTimeout(() => fireZap(direction, targetAvatarEl), t + i * STRIKE_GAP_MS);
     }
-    t += 400 + attacksWon * STRIKE_GAP_MS;
+    if (attacksWon > 0) t += attacksWon * STRIKE_GAP_MS;
 
     if (attacksWon > 0) {
       t += AFTER_STRIKES_PAUSE_MS;
@@ -839,10 +854,10 @@ function enterDuelSearching() {
   showScreen('duel-searching');
 }
 
-// Shown when this player has finished all 3 questions in their batch
-// but the opponent hasn't yet — the battle can't resolve until both
-// have. onDuelResult (via showDuelBattleCinematic) takes over from here
-// the moment the opponent finishes too.
+// Shown after this player has answered a question but the opponent
+// hasn't yet — neither the next question nor the battle cinematic can
+// arrive until both have answered. onDuelQuestion or onDuelResult takes
+// over from here the instant the opponent answers too.
 function enterDuelWaitingForOpponent() {
   $('#duel-waiting-firewall').textContent = `${myFirewall}%`;
   showScreen('duel-waiting');
@@ -1055,10 +1070,25 @@ function syncAsteroidsProgress() {
 // ------------------------------------------------------------
 // Step 6: final results (host ended the game)
 // ------------------------------------------------------------
+// ------------------------------------------------------------
+// Teacher-set overall game duration — a persistent countdown badge,
+// visible across every gameplay screen, independent of game mode.
+// ------------------------------------------------------------
+function onTimeUpdate(payload) {
+  if (gameEnded) return;
+  const badge = $('#game-time-badge');
+  const mm = String(Math.floor(payload.secondsRemaining / 60)).padStart(2, '0');
+  const ss = String(payload.secondsRemaining % 60).padStart(2, '0');
+  $('#game-time-remaining').textContent = `${mm}:${ss}`;
+  badge.hidden = false;
+  badge.classList.toggle('low-time', payload.secondsRemaining <= 30);
+}
+
 function onGameOver(payload) {
   gameEnded = true;
   waitingForRoundResult = false;
   pendingRoundResult = null;
+  $('#game-time-badge').hidden = true;
 
   const myEntry = payload.leaderboard.find((p) => p.id === playerId);
   $('#final-headline').textContent = myEntry
