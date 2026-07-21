@@ -694,9 +694,13 @@ function onDuelQuestionResult(payload) {
   // your OPPONENT has also answered this question — so after your own
   // quick reveal, sit on a "waiting for opponent" screen. Whichever
   // real event (onDuelQuestion or onDuelResult) arrives next will
-  // override this screen automatically. The extra timeout below is
-  // purely a last-resort escape hatch in case a connection drops.
-  setTimeout(() => {
+  // override this screen automatically, AND clears this timer via the
+  // shared advanceTimeout variable — important, because if the
+  // opponent had already answered, the next question can legitimately
+  // arrive before this 1.3s reveal finishes, and this must not be
+  // allowed to fire late and yank the player off a question they're
+  // already mid-way through answering.
+  advanceTimeout = setTimeout(() => {
     enterDuelWaitingForOpponent();
     advanceTimeout = setTimeout(() => enterDuelSearching(), (currentQuestion.timeLimitSeconds + 25) * 1000);
   }, 1300);
